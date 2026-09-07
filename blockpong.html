@@ -1,0 +1,1648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BLOCKPONG</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Mono:wght@400;700&display=swap');
+  * { box-sizing: border-box; }
+  html,body { margin:0; height:100%; overflow:hidden; background:#0d1b2a;
+    font-family:'Space Mono',ui-monospace,monospace; color:#f2efe4; }
+  canvas { display:block; }
+
+  #hud { position:fixed; inset:0; pointer-events:none; }
+
+  #cross { position:absolute; left:50%; top:50%; width:22px; height:22px;
+    transform:translate(-50%,-50%); opacity:.85; }
+  #cross:before, #cross:after { content:''; position:absolute; background:#f2efe4;
+    box-shadow:0 0 0 1px rgba(0,0,0,.5); }
+  #cross:before { left:50%; top:0; width:2px; height:100%; margin-left:-1px; }
+  #cross:after { top:50%; left:0; height:2px; width:100%; margin-top:-1px; }
+
+  #bar { position:absolute; left:50%; bottom:22px; transform:translateX(-50%);
+    display:flex; gap:6px; }
+  .slot { width:50px; height:50px; border:2px solid rgba(242,239,228,.25);
+    background:rgba(13,27,42,.55); display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:3px; }
+  .slot.on { border-color:#ff6b1a; background:rgba(255,107,26,.18); }
+  .chip { width:20px; height:20px; border:2px solid rgba(0,0,0,.35); }
+  .slot span { font-size:8px; letter-spacing:.06em; opacity:.7; }
+
+  #score { position:absolute; left:20px; top:18px; }
+  #score b { font-family:'Archivo Black',sans-serif; font-size:26px; display:block;
+    line-height:1; letter-spacing:-.02em; }
+  #score em, #ammo em { font-style:normal; font-size:10px; letter-spacing:.18em; opacity:.6; }
+
+  #ammo { position:absolute; right:20px; bottom:22px; text-align:right; }
+  #ammo b { font-family:'Archivo Black',sans-serif; font-size:28px; color:#ff6b1a;
+    display:block; line-height:1; letter-spacing:-.02em; }
+
+  #pad { position:absolute; right:20px; top:18px; text-align:right;
+    border-right:3px solid #18d2c4; padding-right:12px; }
+  #pad i { font-style:normal; font-size:9px; letter-spacing:.2em; opacity:.55;
+    display:block; margin-bottom:3px; }
+  #pad b { font-family:'Archivo Black',sans-serif; font-size:22px; display:block;
+    line-height:1; letter-spacing:-.02em; color:#18d2c4; }
+  #pad em { font-style:normal; font-size:10px; letter-spacing:.14em; opacity:.6;
+    display:block; margin-top:4px; }
+
+  #dbg { position:absolute; left:20px; bottom:24px; font-size:10px;
+    letter-spacing:.12em; opacity:.45; line-height:1.7; }
+
+  #start { position:fixed; inset:0; display:flex; align-items:center;
+    justify-content:center; background:radial-gradient(circle at 50% 40%,#16324f,#0a1420 70%);
+    cursor:pointer; z-index:5; }
+  #card { max-width:580px; padding:38px 42px; border:2px solid rgba(242,239,228,.18); }
+  #card h1 { font-family:'Archivo Black',sans-serif; font-size:clamp(44px,9vw,86px);
+    margin:0; line-height:.86; letter-spacing:-.04em; }
+  #card h1 i { font-style:normal; color:#ff6b1a; }
+  #card p.tag { margin:14px 0 26px; font-size:12px; letter-spacing:.22em;
+    text-transform:uppercase; opacity:.65; }
+  .row { display:flex; gap:14px; font-size:13px; padding:5px 0;
+    border-top:1px solid rgba(242,239,228,.12); }
+  .row k { min-width:110px; color:#ff6b1a; font-weight:700; }
+  #go { margin-top:26px; font-family:'Archivo Black',sans-serif; font-size:15px;
+    letter-spacing:.1em; background:#ff6b1a; color:#0a1420; padding:13px 22px;
+    display:inline-block; }
+  #note { position:fixed; left:50%; top:56%; transform:translateX(-50%);
+    font-size:12px; letter-spacing:.16em; opacity:0; transition:opacity .3s; }
+</style>
+</head>
+<body>
+<div id="hud">
+  <div id="cross"></div>
+  <div id="score"><b>0</b><em>BLOCKS SMASHED</em></div>
+  <div id="pad"><i>Q</i><b>CLASSIC</b><em>FAST · TUNNELS · RETURNABLE</em></div>
+  <div id="ammo"><b>0</b><em>BALLS IN PLAY / MAX 3</em></div>
+  <div id="dbg"></div>
+  <div id="bar"></div>
+</div>
+<div id="note"></div>
+
+<div id="start"><div id="card">
+  <h1>BLOCK<i>PONG</i></h1>
+  <p class="tag">Endless voxel world · three paddles · zero mercy</p>
+  <div class="row"><k>MOVE</k><span>W A S D · SPACE jumps · SHIFT sprints</span></div>
+  <div class="row"><k>SWING</k><span>Left click serves · right click places</span></div>
+  <div class="row"><k>PADDLES</k><span>Q cycles 7 paddles · SHIFT+Q goes back</span></div>
+  <div class="row"><k>THE RACK</k><span>Classic · Blocker · Joyride · Scatter · Driller · Boomer · Gardener</span></div>
+  <div class="row"><k>BLOCKS</k><span>Keys 1-6 or scroll wheel</span></div>
+  <div class="row"><k>WORLD</k><span>Endless chunks · 7 biomes · oceans you can swim</span></div>
+  <div class="row"><k>CAVES</k><span>Dig down — tunnels, ore, crystal and lava below</span></div>
+  <div class="row"><k>SOUND</k><span>M mutes · see SAMPLES at the top of the file</span></div>
+  <div id="go">CLICK TO SERVE</div>
+</div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ================================================================ block types
+const TYPES = [
+  { name:'GRASS',  top:0x6aa84f, side:0x7b6134, bot:0x8b5e34, chip:0x6aa84f },
+  { name:'DIRT',   top:0x8b5e34, side:0x8b5e34, bot:0x8b5e34, chip:0x8b5e34 },
+  { name:'STONE',  top:0x8d9198, side:0x83878e, bot:0x777b81, chip:0x8d9198 },
+  { name:'SAND',   top:0xe4d09a, side:0xdcc78d, bot:0xd3bd81, chip:0xe4d09a },
+  { name:'WOOD',   top:0x9a7247, side:0x6b4423, bot:0x9a7247, chip:0x6b4423 },
+  { name:'LEAF',   top:0x468a3f, side:0x3f7d3a, bot:0x376e33, chip:0x3f7d3a },
+  { name:'SNOW',   top:0xf4f8fc, side:0xe3ebf2, bot:0xd6e0ea, chip:0xf4f8fc },
+  { name:'PINE',   top:0x2f5f3f, side:0x2a563a, bot:0x244b32, chip:0x2f5f3f },
+  { name:'GRAVEL', top:0x9a958d, side:0x928d85, bot:0x88837b, chip:0x9a958d },
+  { name:'COAL',   top:0x4a4a4e, side:0x45454a, bot:0x3f3f44, chip:0x4a4a4e },
+  { name:'IRON',   top:0xc98f63, side:0xbe855b, bot:0xb27c54, chip:0xc98f63 },
+  { name:'CRYSTAL',top:0x7fe8ff, side:0x63d5f0, bot:0x4fc2de, chip:0x7fe8ff },
+  { name:'LAVA',   top:0xff8a2b, side:0xf06a15, bot:0xd8550c, chip:0xff8a2b },
+  { name:'WATER',  top:0x3d7ea8, side:0x336d95, bot:0x2d6187, chip:0x3d7ea8 },
+];
+// hex colours unpacked to 0..1 floats once, for the mesher's vertex colours
+const RGB = TYPES.map(t => ({
+  top: [ (t.top>>16&255)/255,  (t.top>>8&255)/255,  (t.top&255)/255  ],
+  side:[ (t.side>>16&255)/255, (t.side>>8&255)/255, (t.side&255)/255 ],
+  bot: [ (t.bot>>16&255)/255,  (t.bot>>8&255)/255,  (t.bot&255)/255  ],
+}));
+
+const GRASS=0, DIRT=1, STONE=2, SAND=3, WOOD=4, LEAF=5, SNOW=6,
+      PINE=7, GRAVEL=8, COAL=9, IRON=10, CRYSTAL=11, LAVA=12, WATER=13;
+// blocks that glow rather than take light from the sun
+const EMISSIVE = { [CRYSTAL]:0.55, [LAVA]:0.95 };
+
+// ================================================================ noise
+// ---- hashing. The old version used Math.sin, which visibly repeats; this is
+// an integer bit-mixer, so the world stays varied however far you walk.
+function hi(x, y, z) {
+  let n = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(z | 0, 1274126177);
+  n = Math.imul(n ^ (n >>> 13), 1274126177);
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+}
+const fade = t => t * t * (3 - 2 * t);
+const hash = (x, z) => hi(Math.floor(x), 0, Math.floor(z));
+
+function noise2(x, z) {
+  const xi = Math.floor(x), zi = Math.floor(z);
+  const u = fade(x - xi), v = fade(z - zi);
+  const a = hi(xi,0,zi), b = hi(xi+1,0,zi), c = hi(xi,0,zi+1), d = hi(xi+1,0,zi+1);
+  return (a*(1-u) + b*u) * (1-v) + (c*(1-u) + d*u) * v;
+}
+function noise3(x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+  const u = fade(x - xi), v = fade(y - yi), w = fade(z - zi);
+  const c000=hi(xi,yi,zi),     c100=hi(xi+1,yi,zi);
+  const c010=hi(xi,yi+1,zi),   c110=hi(xi+1,yi+1,zi);
+  const c001=hi(xi,yi,zi+1),   c101=hi(xi+1,yi,zi+1);
+  const c011=hi(xi,yi+1,zi+1), c111=hi(xi+1,yi+1,zi+1);
+  const x00=c000*(1-u)+c100*u, x10=c010*(1-u)+c110*u;
+  const x01=c001*(1-u)+c101*u, x11=c011*(1-u)+c111*u;
+  return (x00*(1-v)+x10*v)*(1-w) + (x01*(1-v)+x11*v)*w;
+}
+function fbm2(x, z, oct) {
+  let a = 0, amp = 0.5, f = 1, norm = 0;
+  for (let i = 0; i < oct; i++) { a += noise2(x*f, z*f) * amp; norm += amp; amp *= 0.5; f *= 2; }
+  return a / norm;
+}
+function fbm3(x, y, z, oct) {
+  let a = 0, amp = 0.5, f = 1, norm = 0;
+  for (let i = 0; i < oct; i++) { a += noise3(x*f, y*f, z*f) * amp; norm += amp; amp *= 0.5; f *= 2; }
+  return a / norm;
+}
+const smooth = (e0, e1, x) => {
+  const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+};
+
+const CH = 16;          // chunk width/depth
+const CY = 96;          // world height
+const RAD = 6;          // render radius, in chunks
+const SEA = 26;         // water level
+
+const OCEAN=0, BEACH=1, DESERT=2, PLAINS=3, FOREST=4, TAIGA=5, PEAKS=6;
+const BIOME_NAME = ['OCEAN','BEACH','DESERT','PLAINS','FOREST','TAIGA','PEAKS'];
+
+// one column of the world: its height and which biome it belongs to
+const colCache = new Map();
+function column(x, z) {
+  const k = x + ',' + z;
+  let c = colCache.get(k);
+  if (c) return c;
+
+  const cont  = fbm2(x/620 + 11,  z/620 - 7,   3);   // land against sea
+  const temp  = fbm2(x/430 + 411, z/430 + 97,  2);
+  const moist = fbm2(x/370 - 233, z/370 + 501, 2);
+  const land  = smooth(0.34, 0.50, cont);
+
+  const hills = fbm2(x/70 + 3, z/70 - 5, 4);
+  const mMask = smooth(0.52, 0.80, fbm2(x/300 + 71, z/300 - 41, 2));
+  // ridged noise: sharp crests and valleys instead of rolling blobs
+  const ridge = 1 - Math.abs(fbm2(x/150 + 17, z/150 + 29, 3) * 2 - 1);
+
+  let h = SEA - 16 * (1 - land)
+        + land * (3 + hills * 16 + mMask * Math.pow(ridge, 1.6) * 46)
+        + fbm2(x/17, z/17, 2) * 2.2;
+  h = Math.max(1, Math.min(CY - 10, Math.floor(h)));
+
+  let biome;
+  if (h < SEA - 1)          biome = OCEAN;
+  else if (h <= SEA + 1)    biome = BEACH;
+  else if (h > 58)          biome = PEAKS;
+  else if (temp < 0.36)     biome = TAIGA;
+  else if (moist < 0.34 && temp > 0.52) biome = DESERT;
+  else if (moist > 0.55)    biome = FOREST;
+  else                      biome = PLAINS;
+
+  c = { h, biome, temp, moist };
+  if (colCache.size > 60000) colCache.clear();
+  colCache.set(k, c);
+  return c;
+}
+const heightAt = (x, z) => column(x, z).h;
+
+// two intersecting ridged fields carve winding tunnels; a separate fbm opens
+// out the big rooms. Tunnels narrow near the surface so the ground is not lace.
+function caveAt(x, y, z, h, biome) {
+  if (y < 2) return false;
+  const depth = h - y;
+  // never puncture the sea floor, or the oceans would drain into the caves
+  if (h < SEA + 2 && depth < 6) return false;
+  const t1 = Math.abs(noise3(x/52,      y/30,      z/52) - 0.5);
+  const t2 = Math.abs(noise3(x/52 + 41, y/30 + 13, z/52 + 7) - 0.5);
+  const near = depth < 8 ? Math.max(0.30, depth / 8) : 1;
+  if (t1 < 0.085 * near && t2 < 0.085 * near) return true;
+  if (depth > 8 && fbm3(x/40, y/26, z/40, 2) > 0.695) return true;
+  return false;
+}
+
+// what fills a solid cell, before caves are cut out of it
+function strata(x, y, z, col) {
+  const { h, biome } = col;
+  const d = h - y;
+  if (y === 0) return STONE;
+  if (d < 1) {                                  // the surface block itself
+    if (biome === OCEAN)  return y < SEA - 4 ? GRAVEL : SAND;
+    if (biome === BEACH)  return SAND;
+    if (biome === DESERT) return SAND;
+    if (biome === PEAKS)  return h > 64 ? SNOW : STONE;
+    if (biome === TAIGA)  return h > 46 ? SNOW : GRASS;
+    return GRASS;
+  }
+  if (d < 4) {                                  // subsoil
+    if (biome === DESERT || biome === BEACH) return SAND;
+    if (biome === OCEAN) return GRAVEL;
+    if (biome === PEAKS) return STONE;
+    return DIRT;
+  }
+  // ores, rarer and deeper as they get more valuable
+  if (d > 5 && noise3(x/11 + 5, y/11, z/11 + 9) > 0.775) return COAL;
+  if (d > 8 && y < 44 && noise3(x/8 + 51, y/8 + 3, z/8 + 17) > 0.815) return IRON;
+  if (y < 20 && noise3(x/6 + 91, y/6, z/6 + 3) > 0.855) return CRYSTAL;
+  if (noise3(x/22 + 7, y/18 + 2, z/22 + 5) > 0.80) return GRAVEL;
+  return STONE;
+}
+
+// ================================================================ chunk store// ================================================================ chunk store
+const chunks = new Map();
+const ck = (cx, cz) => cx + ',' + cz;
+const cdiv = n => Math.floor(n / CH);
+const idx = (lx, y, lz) => (lx * CY + y) * CH + lz;
+
+function chunkAt(x, z) { return chunks.get(ck(cdiv(x), cdiv(z))); }
+
+function getBlock(x, y, z) {
+  if (y < 0 || y >= CY) return 0;
+  const cx = cdiv(x), cz = cdiv(z);
+  const c = chunks.get(ck(cx, cz));
+  if (!c) return 0;
+  return c.data[idx(x - cx * CH, y, z - cz * CH)];
+}
+// water is a block for meshing, but you walk and shoot straight through it
+const solid   = (x, y, z) => { const v = getBlock(x, y, z); return v !== 0 && v !== WATER + 1; };
+const typeAt  = (x, y, z) => getBlock(x, y, z) - 1;
+const isWater = (x, y, z) => getBlock(x, y, z) === WATER + 1;
+
+function markDirty(cx, cz) { const c = chunks.get(ck(cx, cz)); if (c) c.dirty = true; }
+
+function setBlock(x, y, z, v) {
+  if (y < 0 || y >= CY) return false;
+  const cx = cdiv(x), cz = cdiv(z);
+  const c = chunks.get(ck(cx, cz));
+  if (!c) return false;
+  const lx = x - cx * CH, lz = z - cz * CH;
+  c.data[idx(lx, y, lz)] = v;
+  c.dirty = true;
+  if (lx === 0)      markDirty(cx - 1, cz);
+  if (lx === CH - 1) markDirty(cx + 1, cz);
+  if (lz === 0)      markDirty(cx, cz - 1);
+  if (lz === CH - 1) markDirty(cx, cz + 1);
+  return true;
+}
+
+// ---------------------------------------------------------------- generation
+// trees are derived from chunk coords alone, so a tree straddling a border
+// gets stamped identically no matter which chunk loads first
+function treesFor(cx, cz) {
+  const out = [];
+  // forests are dense, plains sparse, deserts and peaks bare
+  const probe = column(cx * CH + 8, cz * CH + 8);
+  const density = probe.biome === FOREST ? 7 : probe.biome === TAIGA ? 5
+                : probe.biome === PLAINS ? 2 : 0;
+  const n = Math.floor(hi(cx * 13 + 7, 0, cz * 7 - 3) * density);
+  for (let i = 0; i < n; i++) {
+    const x = cx * CH + Math.floor(hi(cx * 31 + i * 5 + 1, 1, cz * 17 - i * 3) * CH);
+    const z = cz * CH + Math.floor(hi(cx * 19 - i * 7, 2, cz * 23 + i * 11 + 2) * CH);
+    const col = column(x, z);
+    if (col.biome !== FOREST && col.biome !== TAIGA && col.biome !== PLAINS) continue;
+    if (col.h <= SEA + 1 || col.h > 52) continue;
+    const pine = col.biome === TAIGA;
+    out.push({
+      x, z, h: col.h, pine,
+      trunk: (pine ? 6 : 4) + Math.floor(hi(x, 3, z) * 4),
+    });
+  }
+  return out;
+}
+
+function genChunk(cx, cz) {
+  const data = new Uint8Array(CH * CY * CH);
+  const ox = cx * CH, oz = cz * CH;
+
+  for (let lx = 0; lx < CH; lx++) for (let lz = 0; lz < CH; lz++) {
+    const wx = ox + lx, wz = oz + lz;
+    const col = column(wx, wz);
+    const top = Math.max(col.h, SEA);
+
+    for (let y = 0; y <= top; y++) {
+      const i = idx(lx, y, lz);
+      if (y <= col.h) {
+        if (y > 0 && caveAt(wx, y, wz, col.h, col.biome)) {
+          // pools of lava collect on the floor of the deepest galleries
+          if (y <= 5 && noise3(wx/34 + 3, 0, wz/34 - 8) > 0.52) data[i] = LAVA + 1;
+          continue;
+        }
+        data[i] = strata(wx, y, wz, col) + 1;
+      } else if (y <= SEA && col.h < SEA) {
+        data[i] = WATER + 1;                    // ocean fill
+      }
+    }
+  }
+
+  // stamp trees from this chunk and its 8 neighbours, clipped to this chunk
+  const put = (wx, wy, wz, t, replace) => {
+    if (wy < 0 || wy >= CY) return;
+    const lx = wx - ox, lz = wz - oz;
+    if (lx < 0 || lx >= CH || lz < 0 || lz >= CH) return;
+    const i = idx(lx, wy, lz);
+    if (!replace && data[i]) return;
+    data[i] = t + 1;
+  };
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+    for (const tr of treesFor(cx + dx, cz + dz)) {
+      const top = tr.h + tr.trunk;
+      if (tr.pine) {
+        // conifer: stacked skirts that narrow toward the tip
+        let r = 3;
+        for (let y = top; y > tr.h + 1; y--) {
+          const rr = Math.max(1, Math.round(r));
+          for (let lx = -rr; lx <= rr; lx++) for (let lz = -rr; lz <= rr; lz++) {
+            if (Math.abs(lx) + Math.abs(lz) > rr) continue;
+            put(tr.x + lx, y, tr.z + lz, PINE, false);
+          }
+          r -= 0.55;
+          if (r < 0.6) r = 3;                   // second skirt lower down
+        }
+        put(tr.x, top + 1, tr.z, PINE, true);
+      } else {
+        for (let ly = -2; ly <= 2; ly++)
+          for (let lx = -2; lx <= 2; lx++)
+            for (let lz = -2; lz <= 2; lz++) {
+              const r = Math.abs(lx) + Math.abs(lz) + Math.abs(ly);
+              if (r > 3 || (lx === 0 && lz === 0 && ly <= 0)) continue;
+              put(tr.x + lx, top + ly, tr.z + lz, LEAF, false);
+            }
+      }
+      for (let y = 1; y <= tr.trunk; y++) put(tr.x, tr.h + y, tr.z, WOOD, true);
+    }
+  }
+
+  const c = { cx, cz, data, mesh: null, water: null, dirty: true };
+  chunks.set(ck(cx, cz), c);
+  markDirty(cx - 1, cz); markDirty(cx + 1, cz);
+  markDirty(cx, cz - 1); markDirty(cx, cz + 1);
+  return c;
+}
+
+// ================================================================ renderer
+const scene = new THREE.Scene();
+const SKY = 0x9fc6e8;
+scene.background = new THREE.Color(SKY);
+scene.fog = new THREE.Fog(SKY, RAD * CH * 0.55, RAD * CH * 0.98);
+
+const camera = new THREE.PerspectiveCamera(74, innerWidth/innerHeight, 0.1, 500);
+// the arms live on their own camera+scene drawn over the world, so a wall
+// right in front of you never slices through the paddle
+const viewScene = new THREE.Scene();
+const viewCam = new THREE.PerspectiveCamera(74, innerWidth/innerHeight, 0.02, 6);
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xdcefff, 0x53412c, 0.95));
+const sun = new THREE.DirectionalLight(0xfff3d6, 0.7);
+sun.position.set(0.5, 1, 0.35);
+scene.add(sun);
+
+function grain() {
+  const c = document.createElement('canvas'); c.width = c.height = 16;
+  const g = c.getContext('2d');
+  for (let i = 0; i < 256; i++) {
+    const v = 205 + Math.floor(Math.random() * 50);
+    g.fillStyle = `rgb(${v},${v},${v})`;
+    g.fillRect(i % 16, Math.floor(i / 16), 1, 1);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter;
+  return t;
+}
+const blockTex = grain();
+const chunkMat = new THREE.MeshLambertMaterial({ vertexColors: true, map: blockTex });
+const waterMat = new THREE.MeshLambertMaterial({
+  vertexColors: true, transparent: true, opacity: 0.72,
+  depthWrite: false, side: THREE.DoubleSide,
+});
+
+// ---------------------------------------------------------------- mesher
+const FACES = [
+  { dir:[ 1,0,0], shade:0.86, face:'side', c:[[1,0,0],[1,1,0],[1,1,1],[1,0,1]] },
+  { dir:[-1,0,0], shade:0.86, face:'side', c:[[0,0,1],[0,1,1],[0,1,0],[0,0,0]] },
+  { dir:[0, 1,0], shade:1.00, face:'top',  c:[[0,1,0],[0,1,1],[1,1,1],[1,1,0]] },
+  { dir:[0,-1,0], shade:0.58, face:'bot',  c:[[0,0,1],[0,0,0],[1,0,0],[1,0,1]] },
+  { dir:[0,0, 1], shade:0.74, face:'side', c:[[1,0,1],[1,1,1],[0,1,1],[0,0,1]] },
+  { dir:[0,0,-1], shade:0.74, face:'side', c:[[0,0,0],[0,1,0],[1,1,0],[1,0,0]] },
+];
+const FUV = [[0,0],[0,1],[1,1],[1,0]];
+
+function buildMesh(c) {
+  const pos = [], nor = [], uv = [], col = [];            // opaque
+  const wpos = [], wnor = [], wuv = [], wcol = [];        // water
+  const ox = c.cx * CH, oz = c.cz * CH;
+  const d = c.data;
+
+  for (let lx = 0; lx < CH; lx++)
+    for (let lz = 0; lz < CH; lz++)
+      for (let y = 0; y < CY; y++) {
+        const v = d[idx(lx, y, lz)];
+        if (!v) continue;
+        const t = v - 1;
+        const water = t === WATER;
+        const wx = ox + lx, wz = oz + lz;
+        const glow = EMISSIVE[t] || 0;
+
+        for (const f of FACES) {
+          const nx = wx + f.dir[0], ny = y + f.dir[1], nz = wz + f.dir[2];
+          const inx = lx + f.dir[0], inz = lz + f.dir[2];
+          let n;
+          if (inx >= 0 && inx < CH && inz >= 0 && inz < CH && ny >= 0 && ny < CY)
+            n = d[idx(inx, ny, inz)];
+          else n = getBlock(nx, ny, nz);
+
+          if (water) {
+            // water only shows where it meets open air
+            if (n !== 0) continue;
+          } else {
+            // solid faces hide behind other solids, but show through water
+            if (n !== 0 && n !== WATER + 1) continue;
+          }
+
+          const base = RGB[t][f.face === 'top' ? 'top' : f.face === 'bot' ? 'bot' : 'side'];
+          // emissive blocks ignore the face shading so they read as lit
+          const sh = glow ? 1 : f.shade;
+          const r = Math.min(1, base[0]*sh + glow*0.55);
+          const g = Math.min(1, base[1]*sh + glow*0.30);
+          const b = Math.min(1, base[2]*sh + glow*0.10);
+          const q = f.c;
+          const P = water ? wpos : pos, N = water ? wnor : nor;
+          const U2 = water ? wuv : uv, C = water ? wcol : col;
+          // water sits slightly below a full block so the surface reads right
+          const drop = water ? 0.12 : 0;
+          for (const k of [0,1,2, 0,2,3]) {
+            const vy = y + q[k][1] - (q[k][1] === 1 ? drop : 0);
+            P.push(lx + q[k][0], vy, lz + q[k][2]);
+            N.push(f.dir[0], f.dir[1], f.dir[2]);
+            U2.push(FUV[k][0], FUV[k][1]);
+            C.push(r, g, b);
+          }
+        }
+      }
+
+  if (c.mesh)  { scene.remove(c.mesh);  c.mesh.geometry.dispose();  c.mesh = null; }
+  if (c.water) { scene.remove(c.water); c.water.geometry.dispose(); c.water = null; }
+  c.dirty = false;
+
+  const build = (P, N, U2, C, material) => {
+    if (!P.length) return null;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(P), 3));
+    geo.setAttribute('normal',   new THREE.BufferAttribute(new Float32Array(N), 3));
+    geo.setAttribute('uv',       new THREE.BufferAttribute(new Float32Array(U2), 2));
+    geo.setAttribute('color',    new THREE.BufferAttribute(new Float32Array(C), 3));
+    geo.computeBoundingSphere();
+    const m = new THREE.Mesh(geo, material);
+    m.position.set(ox, 0, oz);
+    scene.add(m);
+    return m;
+  };
+  c.mesh  = build(pos, nor, uv, col, chunkMat);
+  c.water = build(wpos, wnor, wuv, wcol, waterMat);
+  if (c.water) c.water.renderOrder = 1;
+}
+
+// ---------------------------------------------------------------- streaming
+const OFFSETS = [];
+for (let dx = -RAD; dx <= RAD; dx++) for (let dz = -RAD; dz <= RAD; dz++) {
+  const d = Math.hypot(dx, dz);
+  if (d <= RAD) OFFSETS.push({ dx, dz, d });
+}
+OFFSETS.sort((a, b) => a.d - b.d);
+
+function stream(px, pz) {
+  const pcx = cdiv(px), pcz = cdiv(pz);
+  let budget = 2;
+  for (const o of OFFSETS) {
+    if (budget <= 0) break;
+    const cx = pcx + o.dx, cz = pcz + o.dz;
+    if (chunks.has(ck(cx, cz))) continue;
+    genChunk(cx, cz);
+    budget--;
+  }
+  // drop what is far behind us
+  chunks.forEach((c, k) => {
+    if (Math.hypot(c.cx - pcx, c.cz - pcz) > RAD + 2) {
+      if (c.mesh)  { scene.remove(c.mesh);  c.mesh.geometry.dispose(); }
+      if (c.water) { scene.remove(c.water); c.water.geometry.dispose(); }
+      chunks.delete(k);
+    }
+  });
+  // remesh the nearest dirty chunks, a few per frame
+  const q = [];
+  chunks.forEach(c => { if (c.dirty) q.push(c); });
+  if (q.length) {
+    q.sort((a, b) =>
+      Math.hypot(a.cx - pcx, a.cz - pcz) - Math.hypot(b.cx - pcx, b.cz - pcz));
+    for (let i = 0; i < Math.min(4, q.length); i++) buildMesh(q[i]);
+  }
+  return q.length;
+}
+
+// ================================================================ paddle models
+// Everything here is built from boxes so it matches the voxel world. `vox`
+// places a box by its centre; `voxAt` places one by its lower-left-back corner
+// on a 1/16 grid, which makes blocky models easier to lay out.
+const PAL = {};
+function mat(color, opts) {
+  const k = color + ':' + JSON.stringify(opts || {});
+  if (!PAL[k]) PAL[k] = new THREE.MeshLambertMaterial(
+    Object.assign({ color }, opts || {}));
+  return PAL[k];
+}
+const U = 1 / 16;   // one "pixel" of the model grid
+
+function vox(parent, w, h, d, color, x, y, z, opts) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w * U, h * U, d * U), mat(color, opts));
+  m.position.set(x * U, y * U, z * U);
+  parent.add(m);
+  return m;
+}
+
+// a round-ish blade approximated with stacked slabs, so it reads as voxel
+// rather than a smooth cylinder
+function voxDisc(parent, radius, thick, color, z, opts) {
+  const g = new THREE.Group();
+  for (let ry = -radius; ry < radius; ry++) {
+    // half-width of the disc at this row, snapped to the grid
+    const half = Math.round(Math.sqrt(Math.max(0, radius*radius - (ry+0.5)*(ry+0.5))));
+    if (half <= 0) continue;
+    vox(g, half * 2, 1, thick, color, 0, ry + 0.5, 0, opts);
+  }
+  g.position.z = z * U;
+  parent.add(g);
+  return g;
+}
+
+function makeGrip(parent, color, len) {
+  vox(parent, 1.6, len, 1.2, color, 0, -len / 2 - 1, 0);       // shaft
+  vox(parent, 2.2, 1.2, 1.6, 0x2b2119, 0, -1.2, 0);            // collar
+  vox(parent, 2.0, 1.0, 1.5, color, 0, -len - 1.2, 0);         // butt cap
+}
+
+// ---------------------------------------------------------------- 1 CLASSIC
+const classic = new THREE.Group();
+{
+  voxDisc(classic, 4.5, 1.2, 0x2b1a10, 0);                     // wooden core
+  voxDisc(classic, 4, 0.7, 0xd6202a, 0.9);                     // rubber, front
+  voxDisc(classic, 4, 0.7, 0xb01a22, -0.9);                    // rubber, back
+  classic.children.forEach(c => c.position.y += 5.2 * U);
+  makeGrip(classic, 0xc98b4b, 4);
+}
+
+// ---------------------------------------------------------------- 2 BLOCKER
+const blocker = new THREE.Group();
+{
+  vox(blocker, 9, 9, 2, 0x8d9198, 0, 5.5, 0, { map: blockTex });
+  vox(blocker, 10, 10, 1.2, 0x4b4f55, 0, 5.5, -0.6);
+  // corner studs
+  [[-3.4,-3.4],[3.4,-3.4],[-3.4,3.4],[3.4,3.4]].forEach(c =>
+    vox(blocker, 1.8, 1.8, 2.6, 0x6a6f76, c[0], 5.5 + c[1], 0.5));
+  makeGrip(blocker, 0x6b4423, 4.5);
+  blocker.visible = false;
+}
+
+// ---------------------------------------------------------------- 3 JOYRIDE
+const joyride = new THREE.Group();
+{
+  const ring = new THREE.Group();
+  const R = 4.5;
+  for (let a = 0; a < 16; a++) {
+    const th = a / 16 * Math.PI * 2;
+    const seg = vox(ring, 1.6, 1.2, 1.2, 0x18d2c4,
+      Math.cos(th) * R, Math.sin(th) * R, 0, { emissive: 0x0a5f59 });
+    seg.rotation.z = th;
+  }
+  ring.position.y = 5.4 * U;
+  joyride.add(ring);
+  const web = new THREE.Mesh(new THREE.PlaneGeometry(7 * U, 7 * U),
+    mat(0xdff9f6, { transparent: true, opacity: 0.3, side: THREE.DoubleSide }));
+  web.position.y = 5.4 * U;
+  joyride.add(web);
+  makeGrip(joyride, 0x2f4858, 4.5);
+  joyride.visible = false;
+}
+
+// ---------------------------------------------------------------- 4 SCATTER
+const scatter = new THREE.Group();
+{
+  // splayed fan of prongs
+  for (let i = -2; i <= 2; i++) {
+    const prong = vox(scatter, 1.2, 7, 1.2, 0xf0a830, i * 1.9, 6, 0);
+    prong.rotation.z = -i * 0.14;
+    vox(scatter, 1.6, 1.6, 1.6, 0x3a2a12, i * 2.5, 9.4, 0);    // tip weight
+  }
+  vox(scatter, 10, 1.6, 1.8, 0x7a5a2a, 0, 2.6, 0);             // spreader bar
+  makeGrip(scatter, 0x7a5a2a, 4);
+  scatter.visible = false;
+}
+
+// ---------------------------------------------------------------- 5 DRILLER
+const driller = new THREE.Group();
+{
+  // stepped pyramid spike
+  const steps = [[5,1.4],[4,1.4],[3,1.4],[2,1.4],[1,1.6]];
+  let y = 4;
+  steps.forEach(st => {
+    vox(driller, st[0], st[1], st[0], 0xc0c6cc, 0, y, 0);
+    y += st[1];
+  });
+  vox(driller, 6, 1.6, 6, 0x55402a, 0, 3, 0);                  // collar
+  // helical flutes
+  for (let i = 0; i < 6; i++) {
+    const f = vox(driller, 0.8, 0.8, 5.2, 0x8b939c, 0, 4.5 + i * 1.2, 0);
+    f.rotation.y = i * 0.5;
+  }
+  makeGrip(driller, 0x55402a, 4);
+  driller.visible = false;
+}
+
+// ---------------------------------------------------------------- 6 BOOMER
+const boomer = new THREE.Group();
+{
+  voxDisc(boomer, 4.5, 2, 0x2a2f38, 0);
+  boomer.children.forEach(c => c.position.y += 5.2 * U);
+  const eye = vox(boomer, 3, 3, 2.6, 0xff3b1f, 0, 5.2, 0.3, { emissive: 0x8a1a08 });
+  boomer.userData.eye = eye;
+  // warning stripes
+  [-3, 3].forEach(x => vox(boomer, 1, 6, 2.4, 0xf0c419, x, 5.2, 0.2));
+  makeGrip(boomer, 0x1c2026, 4.5);
+  boomer.visible = false;
+}
+
+// ---------------------------------------------------------------- 7 GARDENER
+const gardener = new THREE.Group();
+{
+  voxDisc(gardener, 4.2, 1, 0x4a6b2a, 0);
+  gardener.children.forEach(c => c.position.y += 5.2 * U);
+  // sprouting leaves off the head
+  [[-3.5,7.5,0.5],[3.5,7.5,-0.4],[0,9.5,0.4],[-2.5,3.5,-0.4]].forEach(l => {
+    const leaf = vox(gardener, 2.6, 1.6, 1, 0x6aa84f, l[0], l[1], l[2]);
+    leaf.rotation.z = l[0] * 0.12;
+  });
+  vox(gardener, 6, 6, 0.6, 0x8fd46a, 0, 5.2, 0.7, { transparent: true, opacity: 0.5 });
+  makeGrip(gardener, 0x4a6b2a, 4);
+  gardener.visible = false;
+}
+
+const PADDLES = [
+  { name:'CLASSIC',  kind:'pong',    tag:'FAST · TUNNELS · RETURNABLE' },
+  { name:'BLOCKER',  kind:'block',   tag:'HEAVY CUBE · 3-WIDE PATH' },
+  { name:'JOYRIDE',  kind:'ride',    tag:'RIDE IT · SPACE TO BAIL' },
+  { name:'SCATTER',  kind:'scatter', tag:'7 PELLETS · SHOTGUN SPRAY' },
+  { name:'DRILLER',  kind:'drill',   tag:'NO GRAVITY · ENDLESS SHAFT' },
+  { name:'BOOMER',   kind:'boom',    tag:'LOBBED · BLASTS A CRATER' },
+  { name:'GARDENER', kind:'grow',    tag:'BUILDS TERRAIN · NO DAMAGE' },
+];
+const paddleMeshes = [classic, blocker, joyride, scatter, driller, boomer, gardener];
+let padIndex = 0;
+
+// ================================================================ arms
+// Two jointed voxel arms parented to the camera. Each is shoulder -> elbow ->
+// wrist so the swing can bend at the right places instead of sliding rigidly.
+const SKIN = 0xb8815a, SLEEVE = 0x2f6f8f, CUFF = 0x24576f;
+
+function buildArm(side) {          // side: +1 right, -1 left
+  const shoulder = new THREE.Group();
+  vox(shoulder, 4, 4.5, 4, SLEEVE, 0, -2.2, 0);            // upper arm
+  vox(shoulder, 4.4, 1.4, 4.4, CUFF, 0, -4.4, 0);          // elbow cuff
+
+  const elbow = new THREE.Group();
+  elbow.position.y = -4.2 * U;
+  shoulder.add(elbow);
+
+  vox(elbow, 3.4, 4.5, 3.4, SKIN, 0, -2.2, 0);             // forearm
+  vox(elbow, 3.8, 1.2, 3.8, CUFF, 0, -0.4, 0);             // cuff seam
+
+  const wrist = new THREE.Group();
+  wrist.position.y = -4.0 * U;
+  elbow.add(wrist);
+
+  // fist: palm plus a thumb nub, so it reads as gripping something
+  vox(wrist, 3.6, 3.2, 3.8, SKIN, 0, -1.4, 0);
+  vox(wrist, 1.2, 1.8, 1.4, SKIN, side * 1.9, -0.9, 0.6);
+
+  return { root: shoulder, elbow, wrist };
+}
+
+const rig = new THREE.Group();
+viewScene.add(rig);
+viewScene.add(new THREE.HemisphereLight(0xffffff, 0x666666, 1.15));
+const viewSun = new THREE.DirectionalLight(0xfff3d6, 0.6);
+viewSun.position.set(0.4, 1, 0.6);
+viewScene.add(viewSun);
+scene.add(camera);
+
+const armR = buildArm(1);
+const armL = buildArm(-1);
+
+// right hand holds the paddle
+const paddle = new THREE.Group();
+paddleMeshes.forEach(m => paddle.add(m));
+paddle.position.set(0, -1.6 * U, 0);
+paddle.rotation.x = Math.PI;     // blade points away from the body, not at your face
+paddle.rotation.z = 0.15;        // slight cant so the face is readable
+armR.wrist.add(paddle);
+
+armR.root.position.set(0.44, -0.10, -0.16);
+armR.root.rotation.set(1.30, 0.20, -0.30);
+armR.elbow.rotation.x = 0.20;
+
+armL.root.position.set(-0.46, -0.12, -0.16);
+armL.root.rotation.set(1.15, -0.24, 0.34);
+armL.elbow.rotation.x = 0.34;
+
+rig.add(armR.root, armL.root);
+
+// the old code animated a group called `hand`; keep the name pointing at the
+// rig so the bob in the main loop still works
+const hand = rig;
+
+// resting pose, captured so the swing can blend back to it
+const REST = {
+  rx: armR.root.rotation.x, ry: armR.root.rotation.y, rz: armR.root.rotation.z,
+  ex: armR.elbow.rotation.x, wz: armR.wrist.rotation.z,
+};
+
+let swing = 0;
+
+function cyclePaddle(back) {
+  const n = PADDLES.length;
+  padIndex = (padIndex + (back ? n - 1 : 1)) % n;
+  paddleMeshes.forEach((m, i) => m.visible = i === padIndex);
+  padNameEl.textContent = PADDLES[padIndex].name;
+  padTagEl.textContent = PADDLES[padIndex].tag;
+  sfx('swap', { budget:false });
+}
+
+// ================================================================ projectiles
+const ballGeo = new THREE.SphereGeometry(0.22, 14, 12);
+const cubeGeo = new THREE.BoxGeometry(0.95, 0.95, 0.95);
+const rideGeo = new THREE.SphereGeometry(1.15, 20, 16);
+const ballMat = new THREE.MeshLambertMaterial({ color:0xffffff, emissive:0xff6b1a, emissiveIntensity:0.5 });
+const cubeMat = new THREE.MeshLambertMaterial({ color:0xf2efe4, map:blockTex, emissive:0x552200 });
+const rideMat = new THREE.MeshLambertMaterial({ color:0x18d2c4, emissive:0x0e6f68,
+  transparent:true, opacity:0.5 });
+const shellMat = new THREE.MeshBasicMaterial({ color:0xdff9f6, wireframe:true });
+
+const pelletGeo = new THREE.SphereGeometry(0.13, 8, 6);
+const drillGeo  = new THREE.ConeGeometry(0.17, 0.5, 10);
+const boomGeo   = new THREE.SphereGeometry(0.3, 12, 10);
+const seedGeo   = new THREE.IcosahedronGeometry(0.24, 0);
+
+const pelletMat = new THREE.MeshLambertMaterial({ color:0xffe0a0, emissive:0xf0a830, emissiveIntensity:0.5 });
+const drillMat  = new THREE.MeshLambertMaterial({ color:0xdfe4e9, emissive:0x44505c });
+const boomMat   = new THREE.MeshLambertMaterial({ color:0x2a2f38, emissive:0xff3b1f, emissiveIntensity:0.7 });
+const seedMat   = new THREE.MeshLambertMaterial({ color:0x8fd46a, emissive:0x2f6b23 });
+
+const SPEC = {
+  pong:    { geo:ballGeo,   mat:ballMat,   speed:42, grav:11,  power:16,  life:9,  bore:0 },
+  block:   { geo:cubeGeo,   mat:cubeMat,   speed:24, grav:17,  power:46,  life:7,  bore:1 },
+  ride:    { geo:rideGeo,   mat:rideMat,   speed:26, grav:4.5, power:1e9, life:15, bore:1 },
+  scatter: { geo:pelletGeo, mat:pelletMat, speed:36, grav:14,  power:5,   life:4,  bore:0 },
+  drill:   { geo:drillGeo,  mat:drillMat,  speed:30, grav:0,   power:120, life:11, bore:2, radius:1.25 },
+  boom:    { geo:boomGeo,   mat:boomMat,   speed:22, grav:19,  power:1,   life:8,  bore:0, blast:4.2 },
+  grow:    { geo:seedGeo,   mat:seedMat,   speed:28, grav:13,  power:1,   life:8,  bore:0, grow:1 },
+};
+
+const balls = [];
+const MAX_BALLS = 3;
+let riding = null;
+
+function serve(kind, dir, from, swarm) {
+  const s = SPEC[kind];
+  const live = balls.filter(b => b !== riding && b.kind !== 'scatter');
+  if (!swarm && live.length >= MAX_BALLS) {
+    const old = live[0];
+    scene.remove(old.mesh);
+    balls.splice(balls.indexOf(old), 1);
+  }
+  if (balls.length > 40) { const o = balls.shift(); scene.remove(o.mesh); }
+  const mesh = new THREE.Mesh(s.geo, s.mat);
+  mesh.position.copy(from);
+  if (kind === 'ride') mesh.add(new THREE.Mesh(new THREE.SphereGeometry(1.2, 12, 8), shellMat));
+  scene.add(mesh);
+  const lift = kind === 'ride' ? 4 : kind === 'boom' ? 7 : kind === 'drill' ? 0 : 2;
+  const b = {
+    kind, mesh, bore: s.bore, grav: s.grav, power: s.power, life: s.life,
+    radius: s.radius || 1.45, blast: s.blast || 0, grow: s.grow || 0,
+    vel: dir.clone().multiplyScalar(s.speed).add(new THREE.Vector3(0, lift, 0)),
+  };
+  balls.push(b);
+  return b;
+}
+
+function mount(b) {
+  riding = b;
+  say('RIDING · SPACE TO BAIL');
+  sfx('thud', { gain:1.1, rate:0.7, budget:false });
+  sfx('whoosh', { gain:0.9, rate:0.6, budget:false });
+}
+
+function bail() {
+  if (!riding) return;
+  player.pos.copy(riding.mesh.position);
+  player.pos.y += 0.6;
+  player.vel.copy(riding.vel).multiplyScalar(0.35);
+  player.vel.y = Math.max(player.vel.y, 4);
+  scene.remove(riding.mesh);
+  balls.splice(balls.indexOf(riding), 1);
+  riding = null;
+  sfx('pop', { budget:false });
+  sfx('whoosh', { gain:0.5, rate:1.5, budget:false });
+}
+
+// ================================================================ debris
+const debrisGeo = new THREE.BoxGeometry(0.16, 0.16, 0.16);
+const debrisMats = TYPES.map(t => new THREE.MeshLambertMaterial({ color: t.chip }));
+const debris = [];
+function burst(x, y, z, type) {
+  if (type < 0 || debris.length > 220) return;
+  for (let i = 0; i < 4; i++) {
+    const m = new THREE.Mesh(debrisGeo, debrisMats[type]);
+    m.position.set(x + 0.5, y + 0.5, z + 0.5);
+    scene.add(m);
+    debris.push({ mesh: m, life: 1.1,
+      vel: new THREE.Vector3((Math.random()-.5)*7, Math.random()*6+2, (Math.random()-.5)*7) });
+  }
+}
+
+// ================================================================ audio
+// ---------------------------------------------------------------------------
+// DROP YOUR OWN SOUNDS IN HERE. Put a path or URL next to any name below and
+// that file replaces the built-in one (wav / mp3 / ogg). Anything left blank
+// keeps the generated version, so the game still works with no files at all.
+//   e.g.  crunch: 'sounds/stone_break.wav',
+// Loading from disk needs the page served over http (python3 -m http.server),
+// not opened as a file:// URL — browsers block fetches from file://.
+// ---------------------------------------------------------------------------
+const SAMPLES = {
+  crunch:'', thud:'', pock:'', bounce:'', whoosh:'', splash:'',
+  place:'', step:'', land:'', swap:'', pop:'', rumble:'', wind:'',
+};
+
+let ac = null, master = null, muted = false;
+const buf = {};
+let rumbleSrc = null, rumbleGain = null, windGain = null;
+
+const nz = () => Math.random() * 2 - 1;
+
+function render(seconds, fn, ceiling) {
+  const sr = ac.sampleRate, n = Math.floor(sr * seconds);
+  const b = ac.createBuffer(1, n, sr);
+  const d = b.getChannelData(0);
+  const st = { lp1:0, lp2:0, hp:0, prev:0 };
+  let peak = 0;
+  for (let i = 0; i < n; i++) {
+    const v = fn(i / sr, i, st, sr) || 0;
+    d[i] = v;
+    const a = Math.abs(v);
+    if (a > peak) peak = a;
+  }
+  // scale to a fixed headroom so nothing crackles and levels stay consistent
+  const target = ceiling === undefined ? 0.92 : ceiling;
+  if (peak > 0.0001) {
+    const g = target / peak;
+    for (let i = 0; i < n; i++) d[i] *= g;
+  }
+  return b;
+}
+// one-pole helpers used inside the generators
+const lp = (st, x, fc, sr, slot) => {
+  const k = 1 - Math.exp(-2 * Math.PI * fc / sr);
+  return st[slot] += (x - st[slot]) * k;
+};
+// make a buffer loop without a seam by folding its tail over its head
+function seamless(b, fade) {
+  const d = b.getChannelData(0), n = d.length, f = Math.floor(b.sampleRate * fade);
+  for (let i = 0; i < f; i++) {
+    const t = i / f;
+    d[i] = d[i] * t + d[n - f + i] * (1 - t);
+  }
+  return b;
+}
+
+function buildBuffers() {
+  // rock crumbling — a scatter of short noise grains, not one flat burst
+  buf.crunch = render(0.34, (t, i, st, sr) => {
+    const grain = Math.exp(-((t % 0.055) / 0.02));
+    const env = Math.exp(-t * 9);
+    const n = lp(st, nz(), 2600 - t * 4000, sr, 'lp1');
+    const body = Math.sin(2 * Math.PI * 96 * t) * Math.exp(-t * 22) * 0.35;
+    return (n * grain * 1.5 + body) * env;
+  });
+
+  // heavy cube landing — low sweep with a dust tail
+  buf.thud = render(0.55, (t, i, st, sr) => {
+    const f = 150 * Math.exp(-t * 7) + 42;
+    const hit = Math.sin(2 * Math.PI * f * t) * Math.exp(-t * 6.5);
+    const dust = lp(st, nz(), 900, sr, 'lp1') * Math.exp(-t * 5) * 0.4;
+    return hit * 0.9 + dust;
+  });
+
+  // celluloid ball on rubber — click transient plus a tiny hollow ring
+  const ping = (dec, amp) => render(0.16, (t, i, st, sr) => {
+    const click = lp(st, nz(), 7000, sr, 'lp1') * Math.exp(-t * 320) * 1.2;
+    const ring = (Math.sin(2*Math.PI*2350*t) * 0.6
+                + Math.sin(2*Math.PI*3480*t) * 0.3
+                + Math.sin(2*Math.PI*5120*t) * 0.15) * Math.exp(-t * dec);
+    return (click + ring) * amp;
+  });
+  buf.pock   = ping(46, 0.9);
+  buf.bounce = ping(70, 0.5);
+
+  // paddle through air — noise swept through a moving filter
+  buf.whoosh = render(0.42, (t, i, st, sr) => {
+    const bell = Math.sin(Math.PI * Math.min(t / 0.42, 1));
+    const fc = 300 + 1500 * Math.sin(Math.PI * Math.min(t / 0.42, 1));
+    const low = lp(st, nz(), fc, sr, 'lp1');
+    const band = low - lp(st, low, fc * 0.35, sr, 'lp2');
+    return band * bell * bell * 2.2;
+  });
+
+  // wooden knock for placing a block
+  buf.place = render(0.2, (t, i, st, sr) => {
+    const knock = (Math.sin(2*Math.PI*196*t) + Math.sin(2*Math.PI*310*t) * 0.5)
+                  * Math.exp(-t * 26);
+    const tick = lp(st, nz(), 4200, sr, 'lp1') * Math.exp(-t * 190);
+    return knock * 0.7 + tick * 0.5;
+  });
+
+  // boots on gravel
+  buf.step = render(0.14, (t, i, st, sr) => {
+    const env = Math.exp(-t * 30) * (t < 0.004 ? t / 0.004 : 1);
+    return lp(st, nz(), 1700, sr, 'lp1') * env * 1.6;
+  });
+  buf.land = render(0.3, (t, i, st, sr) => {
+    const env = Math.exp(-t * 14);
+    const grit = lp(st, nz(), 1300, sr, 'lp1') * env * 1.5;
+    const thump = Math.sin(2 * Math.PI * 70 * t) * Math.exp(-t * 17) * 0.6;
+    return grit + thump;
+  });
+
+  // paddle swapped off the rack
+  buf.swap = render(0.12, (t, i, st, sr) => {
+    const tap = Math.sin(2*Math.PI*520*t) * Math.exp(-t * 40);
+    const brush = lp(st, nz(), 3000, sr, 'lp1') * Math.exp(-t * 60);
+    return tap * 0.5 + brush * 0.6;
+  });
+  buf.splash = render(0.5, (t, i, st, sr) => {
+    const env = Math.exp(-t * 6) * (t < 0.01 ? t / 0.01 : 1);
+    // bright at the impact, darkening as the water closes over
+    const n = lp(st, nz(), 3400 - t * 5200, sr, 'lp1');
+    const gulp = Math.sin(2 * Math.PI * (420 - t * 500) * t) * Math.exp(-t * 9) * 0.3;
+    return n * env * 1.6 + gulp;
+  });
+
+  buf.pop = render(0.18, (t, i, st, sr) => {
+    const f = 900 * Math.exp(-t * 12) + 240;
+    return Math.sin(2 * Math.PI * f * t) * Math.exp(-t * 16) * 0.7;
+  });
+
+  // loops
+  buf.rumble = seamless(render(2.0, (t, i, st, sr) => {
+    const wob = 0.75 + 0.25 * Math.sin(2 * Math.PI * 0.7 * t);
+    const low = lp(st, nz(), 190, sr, 'lp1');
+    const grind = lp(st, nz(), 1100, sr, 'lp2') * 0.18;
+    return (low * 2.4 + grind) * wob;
+  }, 0.75), 0.15);
+
+  buf.wind = seamless(render(4.0, (t, i, st, sr) => {
+    const gust = 0.55 + 0.45 * Math.sin(2*Math.PI*0.13*t) * Math.sin(2*Math.PI*0.31*t + 1.2);
+    return lp(st, nz(), 420 + 260 * gust, sr, 'lp1') * gust * 1.4;
+  }, 0.6), 0.4);
+}
+
+// optional user files override the generated buffers
+function loadSamples() {
+  Object.keys(SAMPLES).forEach(name => {
+    const url = SAMPLES[name];
+    if (!url) return;
+    fetch(url)
+      .then(r => r.arrayBuffer())
+      .then(a => new Promise((res, rej) => ac.decodeAudioData(a, res, rej)))
+      .then(b => {
+        buf[name] = b;
+        if (name === 'rumble' || name === 'wind') startLoops();
+      })
+      .catch(() => console.warn('[audio] could not load', url, '- using built-in'));
+  });
+}
+
+function loop(name, vol) {
+  const src = ac.createBufferSource(), g = ac.createGain();
+  src.buffer = buf[name]; src.loop = true;
+  g.gain.value = vol;
+  src.connect(g); g.connect(master);
+  src.start();
+  return { src, g };
+}
+function startLoops() {
+  if (rumbleSrc) { try { rumbleSrc.src.stop(); } catch (e) {} }
+  if (windGain)  { try { windGain.src.stop(); } catch (e) {} }
+  rumbleSrc = loop('rumble', 0);  rumbleGain = rumbleSrc.g;
+  windGain  = loop('wind', 0.05);
+}
+
+function initAudio() {
+  if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  master = ac.createGain();
+  master.gain.value = 0.85;
+  master.connect(ac.destination);
+  buildBuffers();
+  startLoops();
+  loadSamples();
+}
+
+// budget stops a big carve from firing 200 crunches in one frame
+let sfxBudget = 4;
+function sfx(name, opt) {
+  if (!ac || !buf[name] || muted) return;
+  opt = opt || {};
+  let gain = opt.gain === undefined ? 1 : opt.gain;
+  let pan = 0;
+  if (opt.pos) {
+    const d = opt.pos.distanceTo(camera.position);
+    if (d > 46) return;
+    gain *= 1 / (1 + d * d * 0.012);
+    if (gain < 0.015) return;
+    const right = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion);
+    pan = Math.max(-0.9, Math.min(0.9,
+      opt.pos.clone().sub(camera.position).normalize().dot(right)));
+  }
+  if (opt.budget !== false) { if (sfxBudget <= 0) return; sfxBudget--; }
+
+  const src = ac.createBufferSource();
+  src.buffer = buf[name];
+  src.playbackRate.value = (opt.rate || 1) * (1 + (Math.random() - 0.5) * (opt.jitter === undefined ? 0.12 : opt.jitter));
+  const g = ac.createGain();
+  g.gain.value = gain;
+  let tail = g;
+  if (ac.createStereoPanner && pan) {
+    const p = ac.createStereoPanner();
+    p.pan.value = pan;
+    g.connect(p); tail = p;
+  }
+  src.connect(g); tail.connect(master);
+  src.start();
+}
+
+// ================================================================ player
+const player = {
+  pos: new THREE.Vector3(8.5, 0, 8.5),
+  vel: new THREE.Vector3(),
+  onGround: false, yaw: 0, pitch: 0,
+};
+const WIDE = 0.3, TALL = 1.75, EYE = 1.6;
+const keys = {};
+
+function collide(axis, amount) {
+  player.pos[axis] += amount;
+  const p = player.pos;
+  const x0 = Math.floor(p.x - WIDE), x1 = Math.floor(p.x + WIDE);
+  const y0 = Math.floor(p.y),        y1 = Math.floor(p.y + TALL);
+  const z0 = Math.floor(p.z - WIDE), z1 = Math.floor(p.z + WIDE);
+  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) {
+    if (!solid(x,y,z)) continue;
+    if (axis === 'x') p.x = amount > 0 ? x - WIDE - 0.001 : x + 1 + WIDE + 0.001;
+    if (axis === 'z') p.z = amount > 0 ? z - WIDE - 0.001 : z + 1 + WIDE + 0.001;
+    if (axis === 'y') {
+      if (amount > 0) { p.y = y - TALL - 0.001; player.vel.y = 0; }
+      else { p.y = y + 1.001; player.vel.y = 0; player.onGround = true; }
+    }
+  }
+}
+
+function raycast(origin, dir, dist) {
+  let x = Math.floor(origin.x), y = Math.floor(origin.y), z = Math.floor(origin.z);
+  const sx = Math.sign(dir.x), sy = Math.sign(dir.y), sz = Math.sign(dir.z);
+  const dx = Math.abs(1/dir.x), dy = Math.abs(1/dir.y), dz = Math.abs(1/dir.z);
+  let tx = (sx > 0 ? x + 1 - origin.x : origin.x - x) * dx;
+  let ty = (sy > 0 ? y + 1 - origin.y : origin.y - y) * dy;
+  let tz = (sz > 0 ? z + 1 - origin.z : origin.z - z) * dz;
+  let face = [0,0,0], t = 0;
+  while (t < dist) {
+    if (solid(x,y,z)) return { x, y, z, face };
+    if (tx < ty && tx < tz)  { x += sx; t = tx; tx += dx; face = [-sx,0,0]; }
+    else if (ty < tz)        { y += sy; t = ty; ty += dy; face = [0,-sy,0]; }
+    else                     { z += sz; t = tz; tz += dz; face = [0,0,-sz]; }
+  }
+  return null;
+}
+
+const forward = () => new THREE.Vector3(
+  -Math.sin(player.yaw) * Math.cos(player.pitch),
+   Math.sin(player.pitch),
+  -Math.cos(player.yaw) * Math.cos(player.pitch)).normalize();
+const eye = () => new THREE.Vector3(player.pos.x, player.pos.y + EYE, player.pos.z);
+
+// ================================================================ hotbar / HUD
+const PICKS = [STONE, DIRT, GRASS, WOOD, SAND, SNOW, GRAVEL, CRYSTAL];
+let held = 0;
+const bar = document.getElementById('bar');
+PICKS.forEach((t, i) => {
+  const d = document.createElement('div');
+  d.className = 'slot' + (i === 0 ? ' on' : '');
+  d.innerHTML = `<div class="chip" style="background:#${TYPES[t].chip.toString(16).padStart(6,'0')}"></div><span>${TYPES[t].name}</span>`;
+  bar.appendChild(d);
+});
+function selectSlot(i) {
+  held = i;
+  [...bar.children].forEach((c, j) => c.classList.toggle('on', j === i));
+}
+
+let smashed = 0;
+const scoreEl   = document.querySelector('#score b');
+const ammoEl    = document.querySelector('#ammo b');
+const ammoLabel = document.querySelector('#ammo em');
+const padNameEl = document.querySelector('#pad b');
+const padTagEl  = document.querySelector('#pad em');
+const dbgEl     = document.getElementById('dbg');
+const note      = document.getElementById('note');
+let noteTimer = 0;
+function say(text) { note.textContent = text; note.style.opacity = 1; noteTimer = 1.5; }
+
+// ================================================================ digging
+function destroy(x, y, z) {
+  const t = typeAt(x, y, z);
+  if (t < 0) return false;
+  setBlock(x, y, z, 0);
+  burst(x, y, z, t);
+  smashed++; scoreEl.textContent = smashed;
+  return true;
+}
+
+function carve(pos, radius) {
+  let n = 0;
+  const r = Math.ceil(radius);
+  const bx = Math.floor(pos.x), by = Math.floor(pos.y), bz = Math.floor(pos.z);
+  for (let x = bx - r; x <= bx + r; x++)
+    for (let y = by - r; y <= by + r; y++)
+      for (let z = bz - r; z <= bz + r; z++) {
+        const t = typeAt(x, y, z);
+        if (t < 0) continue;
+        const dx = x + 0.5 - pos.x, dy = y + 0.5 - pos.y, dz = z + 0.5 - pos.z;
+        if (dx*dx + dy*dy + dz*dz > radius * radius) continue;
+        setBlock(x, y, z, 0);
+        if (Math.random() < 0.25) burst(x, y, z, t);
+        if (Math.random() < 0.12)
+          sfx('crunch', { pos:new THREE.Vector3(x+0.5, y+0.5, z+0.5), gain:0.5, rate:0.8 });
+        smashed++; n++;
+      }
+  if (n) scoreEl.textContent = smashed;
+  return n;
+}
+
+// spherical detonation with a ragged edge, plus an outward debris kick
+function explode(pos, radius) {
+  let n = 0;
+  const r = Math.ceil(radius);
+  const bx = Math.floor(pos.x), by = Math.floor(pos.y), bz = Math.floor(pos.z);
+  for (let x = bx - r; x <= bx + r; x++)
+    for (let y = by - r; y <= by + r; y++)
+      for (let z = bz - r; z <= bz + r; z++) {
+        const t = typeAt(x, y, z);
+        if (t < 0) continue;
+        const dx = x + 0.5 - pos.x, dy = y + 0.5 - pos.y, dz = z + 0.5 - pos.z;
+        const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        if (d > radius) continue;
+        if (d > radius - 1.1 && Math.random() < 0.45) continue;  // ragged rim
+        setBlock(x, y, z, 0);
+        if (Math.random() < 0.18) burst(x, y, z, t);
+        smashed++; n++;
+      }
+  if (n) scoreEl.textContent = smashed;
+  sfx('thud', { pos, gain:1.2, rate:0.55, budget:false });
+  sfx('crunch', { pos, gain:1, rate:0.6, budget:false });
+  // shove the player if they are standing too close to their own blast
+  const away = player.pos.clone().sub(pos);
+  const d = away.length();
+  if (d < radius + 3.5) {
+    away.normalize().multiplyScalar((radius + 3.5 - d) * 3.4);
+    away.y = Math.abs(away.y) + 6;
+    player.vel.add(away);
+    player.onGround = false;
+  }
+  return n;
+}
+
+// grow a mound of terrain instead of removing it
+function grow(pos, radius) {
+  let n = 0;
+  const r = Math.ceil(radius);
+  const bx = Math.floor(pos.x), by = Math.floor(pos.y), bz = Math.floor(pos.z);
+  for (let x = bx - r; x <= bx + r; x++)
+    for (let y = by - r; y <= by + r; y++)
+      for (let z = bz - r; z <= bz + r; z++) {
+        if (y < 0 || y >= CY || solid(x, y, z)) continue;
+        const dx = x + 0.5 - pos.x, dy = (y + 0.5 - pos.y) * 1.5, dz = z + 0.5 - pos.z;
+        const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        if (d > radius || Math.random() < d / radius * 0.5) continue;
+        // dirt core, grass on anything with open sky above it
+        setBlock(x, y, z, (solid(x, y + 1, z) ? DIRT : GRASS) + 1);
+        n++;
+      }
+  sfx('place', { pos, gain:0.9, rate:0.7, budget:false });
+  return n;
+}
+
+function place() {
+  const hit = raycast(eye(), forward(), 6);
+  if (!hit) return;
+  const x = hit.x + hit.face[0], y = hit.y + hit.face[1], z = hit.z + hit.face[2];
+  if (y < 0 || y >= CY || solid(x, y, z)) return;
+  if (!riding) {
+    const p = player.pos;
+    if (x === Math.floor(p.x) && z === Math.floor(p.z) &&
+        (y === Math.floor(p.y) || y === Math.floor(p.y + 1))) return;
+  }
+  if (setBlock(x, y, z, PICKS[held] + 1))
+    sfx('place', { pos:new THREE.Vector3(x+0.5, y+0.5, z+0.5), budget:false });
+}
+
+function doSwing() {
+  const dir = forward();
+  if (riding) {
+    riding.vel.copy(dir).multiplyScalar(38);
+    riding.life = Math.max(riding.life, 4);
+    swing = 1;
+    sfx('whoosh', { gain:1, rate:0.55, budget:false });
+    sfx('thud', { gain:0.6, rate:0.8, budget:false });
+    return;
+  }
+  if (swing > 0.12) return;
+  swing = 1;
+  sfx('whoosh', { gain:0.55, budget:false });
+  const kind = PADDLES[padIndex].kind, o = eye();
+
+  if (kind === 'pong') {
+    const reach = o.clone().add(dir.clone().multiplyScalar(2.2));
+    let hit = null, best = 2.4;
+    for (const b of balls) {
+      if (b.kind !== 'pong') continue;
+      const d = b.mesh.position.distanceTo(reach);
+      if (d < best) { best = d; hit = b; }
+    }
+    if (hit) {
+      hit.vel.copy(dir).multiplyScalar(56);
+      hit.power = 22; hit.life = 9;
+      sfx('pock', { gain:1.1, budget:false });
+      say('RETURN · POWER 22');
+      return;
+    }
+  }
+  if (kind === 'scatter') {
+    const from = o.clone().add(dir.clone().multiplyScalar(1.1));
+    for (let i = 0; i < 7; i++) {
+      const spread = dir.clone().add(new THREE.Vector3(
+        (Math.random()-0.5) * 0.34,
+        (Math.random()-0.5) * 0.34,
+        (Math.random()-0.5) * 0.34)).normalize();
+      const pel = serve('scatter', spread, from, true);
+      pel.vel.multiplyScalar(0.85 + Math.random() * 0.3);
+    }
+    sfx('crunch', { gain:1.1, rate:1.5, budget:false });
+    sfx('pock', { gain:0.7, rate:1.4, budget:false });
+    return;
+  }
+
+  const b = serve(kind, dir, o.clone().add(dir.clone().multiplyScalar(kind === 'ride' ? 2.2 : 1.1)));
+  if (kind === 'ride') mount(b);
+  else if (kind === 'block') sfx('thud', { gain:0.85, rate:0.9, budget:false });
+  else if (kind === 'boom')  sfx('thud', { gain:0.9, rate:1.3, budget:false });
+  else if (kind === 'drill') sfx('whoosh', { gain:0.8, rate:1.6, budget:false });
+  else if (kind === 'grow')  sfx('pop', { gain:0.8, rate:1.2, budget:false });
+  else sfx('pock', { gain:1, budget:false });
+}
+
+// ================================================================ input
+const start = document.getElementById('start');
+start.addEventListener('click', () => {
+  renderer.domElement.requestPointerLock();
+  initAudio();
+});
+document.addEventListener('pointerlockchange', () => {
+  start.style.display = document.pointerLockElement ? 'none' : 'flex';
+});
+addEventListener('mousemove', e => {
+  if (!document.pointerLockElement) return;
+  player.yaw -= e.movementX * 0.0022;
+  player.pitch -= e.movementY * 0.0022;
+  player.pitch = Math.max(-1.55, Math.min(1.55, player.pitch));
+});
+addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('mousedown', e => {
+  if (!document.pointerLockElement) return;
+  if (e.button === 0) doSwing();
+  if (e.button === 2) place();
+});
+addEventListener('wheel', e => selectSlot((held + (e.deltaY > 0 ? 1 : PICKS.length - 1)) % PICKS.length));
+addEventListener('keydown', e => {
+  const repeat = keys[e.code];
+  keys[e.code] = true;
+  if (repeat) return;
+  if (e.code.startsWith('Digit')) {
+    const n = +e.code.slice(5) - 1;
+    if (n >= 0 && n < PICKS.length) selectSlot(n);
+  }
+  if (e.code === 'KeyQ') cyclePaddle(e.shiftKey);
+  if (e.code === 'Space' && riding) bail();
+  if (e.code === 'KeyM' && master) {
+    muted = !muted;
+    master.gain.value = muted ? 0 : 0.85;
+    say(muted ? 'SOUND OFF' : 'SOUND ON');
+  }
+});
+addEventListener('keyup', e => keys[e.code] = false);
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  viewCam.aspect = innerWidth / innerHeight;
+  viewCam.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ================================================================ spawn
+(function spawn() {
+  // walk outward until we find dry ground, so you never start treading water
+  let sx = 8, sz = 8;
+  for (let r = 0; r < 900; r += 7) {
+    const a = r * 0.7;
+    const x = Math.round(8 + Math.cos(a) * r), z = Math.round(8 + Math.sin(a) * r);
+    const col = column(x, z);
+    if (col.h > SEA + 2 && col.biome !== OCEAN) { sx = x; sz = z; break; }
+  }
+  const scx = cdiv(sx), scz = cdiv(sz);
+  for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) genChunk(scx + dx, scz + dz);
+  chunks.forEach(c => buildMesh(c));
+  player.pos.set(sx + 0.5, heightAt(sx, sz) + 2.2, sz + 0.5);
+})();
+
+// ================================================================ loop
+const G = 26;
+let last = performance.now();
+let acc = 0, stepDist = 0, wasSwimming = false, wasSubmerged = false;
+
+function tick(now) {
+  requestAnimationFrame(tick);
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+
+  // ---- movement
+  // waist-deep or under: you swim instead of walk
+  const swimming = !riding && (isWater(Math.floor(player.pos.x), Math.floor(player.pos.y + 0.9), Math.floor(player.pos.z))
+                            || isWater(Math.floor(player.pos.x), Math.floor(player.pos.y), Math.floor(player.pos.z)));
+  if (swimming !== wasSwimming) {
+    if (Math.abs(player.vel.y) > 3 || swimming) sfx('splash', { gain: swimming ? 0.9 : 0.5, budget:false });
+    wasSwimming = swimming;
+  }
+
+  if (document.pointerLockElement) {
+    const speed = swimming ? 3.8 : keys.ShiftLeft ? 9.5 : 5.6;
+    let fx = 0, fz = 0;
+    if (keys.KeyW) fz -= 1;
+    if (keys.KeyS) fz += 1;
+    if (keys.KeyA) fx -= 1;
+    if (keys.KeyD) fx += 1;
+    const len = Math.hypot(fx, fz) || 1;
+    const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
+    // move along the camera's own basis: forward is (-sin, -cos), right is (cos, -sin)
+    player.vel.x = (fx * cos + fz * sin) / len * speed;
+    player.vel.z = (fz * cos - fx * sin) / len * speed;
+    if (keys.Space && swimming) player.vel.y = 4.4;                    // swim up
+    else if (keys.Space && player.onGround && !riding) { player.vel.y = 9.2; player.onGround = false; }
+  } else { player.vel.x = player.vel.z = 0; }
+
+  const ready = !!chunkAt(Math.floor(player.pos.x), Math.floor(player.pos.z));
+  if (!riding && ready) {
+    if (swimming) {
+      // buoyancy plus drag: you sink slowly and bob back up
+      player.vel.y -= G * 0.18 * dt;
+      player.vel.y = Math.max(player.vel.y, -3.2);
+      player.vel.y *= 0.92;
+    } else player.vel.y -= G * dt;
+    const wasFalling = player.vel.y;
+    const wasGrounded = player.onGround;
+    player.onGround = false;
+    collide('x', player.vel.x * dt);
+    collide('z', player.vel.z * dt);
+    collide('y', player.vel.y * dt);
+
+    // footsteps every ~2.1 blocks travelled, pitched by the surface underfoot
+    if (player.onGround) {
+      const ground = typeAt(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.2), Math.floor(player.pos.z));
+      const rate = ground === SAND ? 1.35 : ground === SNOW ? 1.5
+                 : ground === WOOD || ground === LEAF ? 1.15 : 1;
+      if (!wasGrounded && wasFalling < -9) {
+        sfx('land', { gain: Math.min(1, -wasFalling / 18), rate, budget:false });
+        stepDist = 0;
+      } else {
+        stepDist += Math.hypot(player.vel.x, player.vel.z) * dt;
+        if (stepDist > 2.1) {
+          stepDist = 0;
+          sfx('step', { gain: keys.ShiftLeft ? 0.5 : 0.34, rate, budget:false });
+        }
+      }
+    }
+    if (player.pos.y < -30) {
+      player.pos.y = Math.max(SEA, heightAt(Math.floor(player.pos.x), Math.floor(player.pos.z))) + 3;
+      player.vel.set(0,0,0);
+    }
+  }
+
+  camera.position.copy(riding ? riding.mesh.position : eye());
+
+  // murky blue fog and a tighter view when your head is under
+  const submerged = isWater(Math.floor(camera.position.x),
+                            Math.floor(camera.position.y),
+                            Math.floor(camera.position.z));
+  if (submerged !== wasSubmerged) {
+    wasSubmerged = submerged;
+    if (submerged) {
+      scene.background.setHex(0x1d4b6b);
+      scene.fog.color.setHex(0x1d4b6b);
+      scene.fog.near = 0.5; scene.fog.far = 22;
+    } else {
+      scene.background.setHex(SKY);
+      scene.fog.color.setHex(SKY);
+      scene.fog.near = RAD * CH * 0.55; scene.fog.far = RAD * CH * 0.98;
+    }
+  }
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y = player.yaw;
+  camera.rotation.x = player.pitch;
+
+  // ---- arm animation
+  if (swing > 0) swing = Math.max(0, swing - dt * 4.2);
+
+  // swing runs 1 -> 0; remap so the arm winds up first, then snaps through
+  const t = 1 - swing;
+  const wind = Math.min(1, t / 0.28);              // 0..1 during the pull back
+  const snap = Math.max(0, (t - 0.28) / 0.72);     // 0..1 during the strike
+  const ease = swing > 0 ? (t < 0.28 ? -wind * 0.55 : Math.sin(snap * Math.PI) * 1.0) : 0;
+  const follow = swing > 0 ? Math.sin(Math.min(1, snap) * Math.PI) : 0;
+
+  armR.root.rotation.x = REST.rx + ease * 0.95;
+  armR.root.rotation.z = REST.rz - follow * 0.55;
+  armR.root.rotation.y = REST.ry + follow * 0.22;
+  armR.elbow.rotation.x = REST.ex - Math.max(0, ease) * 0.75 + (t < 0.28 ? wind * 0.55 : 0);
+  armR.wrist.rotation.z = REST.wz - follow * 1.35;
+
+  // walk sway and a landing dip, so the arms feel attached to a body
+  const moving = Math.hypot(player.vel.x, player.vel.z) > 0.5;
+  const gait = moving && !riding && player.onGround ? Math.sin(now / 130) : 0;
+  const gait2 = moving && !riding && player.onGround ? Math.sin(now / 130 + 1.1) : 0;
+  rig.position.y = gait * 0.022 + (riding ? -0.05 : 0);
+  rig.position.x = gait * 0.012;
+  rig.rotation.z = gait * 0.035;
+
+  // the idle arm swings opposite the held one
+  armL.root.rotation.x = -0.35 + gait2 * 0.22;
+  armL.elbow.rotation.x = -0.75 - Math.abs(gait2) * 0.2;
+
+  // the Boomer's eye pulses in your hand too, not just on the projectile
+  if (boomer.visible && boomer.userData.eye)
+    boomer.userData.eye.material.emissiveIntensity = 0.5 + Math.abs(Math.sin(now / 260)) * 0.7;
+
+  // ---- ambience: wind rises with height and speed, rumble tracks the ride
+  if (ac) {
+    const alt = Math.max(0, (player.pos.y - 26) / 40);
+    const rush = Math.min(1, Math.hypot(player.vel.x, player.vel.y, player.vel.z) / 40);
+    const wantWind = 0.04 + alt * 0.11 + rush * 0.1;
+    windGain.g.gain.value += (wantWind - windGain.g.gain.value) * Math.min(1, dt * 2);
+    const wantRumble = riding ? Math.min(0.5, 0.15 + riding.vel.length() / 90) : 0;
+    rumbleGain.gain.value += (wantRumble - rumbleGain.gain.value) * Math.min(1, dt * 5);
+  }
+
+  // ---- projectiles
+  sfxBudget = 4;
+  for (let i = balls.length - 1; i >= 0; i--) {
+    const b = balls[i];
+    b.life -= dt;
+
+    if (b === riding) {
+      const want = forward().multiplyScalar(Math.max(b.vel.length(), 22));
+      b.vel.lerp(want, Math.min(1, dt * 2.4));
+      b.vel.y -= b.grav * dt;
+      const move = b.vel.clone().multiplyScalar(dt);
+      const steps = Math.ceil(move.length() / 0.5) || 1;
+      const step = move.divideScalar(steps);
+      for (let s2 = 0; s2 < steps; s2++) {
+        b.mesh.position.add(step);
+        carve(b.mesh.position, 1.7);
+      }
+      b.mesh.rotation.x += dt * 2; b.mesh.rotation.y += dt * 1.3;
+      if (b.life <= 0 || b.mesh.position.y < -20) { say('RIDE OVER'); bail(); }
+      continue;
+    }
+
+    b.vel.y -= b.grav * dt;
+    const move = b.vel.clone().multiplyScalar(dt);
+    const steps = Math.ceil(move.length() / 0.28) || 1;
+    const step = move.divideScalar(steps);
+    for (let s2 = 0; s2 < steps; s2++) {
+      const prev = b.mesh.position.clone();
+      b.mesh.position.add(step);
+      const p = b.mesh.position;
+      if (b.kind === 'block') b.mesh.rotation.set(p.x * 0.4, p.z * 0.4, p.y * 0.3);
+      else if (b.kind === 'drill') {
+        b.mesh.quaternion.setFromUnitVectors(
+          new THREE.Vector3(0, 1, 0), b.vel.clone().normalize());
+      }
+      const cx = Math.floor(p.x), cy = Math.floor(p.y), cz = Math.floor(p.z);
+      if (!solid(cx, cy, cz)) continue;
+
+      // one-shot payloads resolve on first contact
+      if (b.blast) { explode(p, b.blast); b.life = 0; break; }
+      if (b.grow)  { grow(p, 2.6); b.life = 0; break; }
+
+      if (b.power > 0) {
+        if (b.bore) b.power -= carve(p, b.radius);
+        else {
+          destroy(cx, cy, cz);
+          if (b.power > 10) {
+            const nb = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+            for (const d of nb) if (Math.random() < 0.35) destroy(cx+d[0], cy+d[1], cz+d[2]);
+          }
+          b.power--;
+        }
+        b.vel.multiplyScalar(b.kind === 'drill' ? 1 : b.kind === 'block' ? 0.99 : 0.965);
+        if (b.kind === 'block') sfx('thud', { pos:p, gain:0.7, rate:0.85 });
+        else if (b.kind === 'drill') sfx('crunch', { pos:p, gain:0.5, rate:1.7 });
+        else if (b.kind === 'scatter') sfx('crunch', { pos:p, gain:0.4, rate:1.6 });
+        else sfx('crunch', { pos:p, rate:0.9 + Math.max(b.power,0) * 0.02 });
+        if (b.power <= 0) { b.power = 0; say('BALL SPENT'); }
+      } else {
+        const px = Math.floor(prev.x), py = Math.floor(prev.y), pz = Math.floor(prev.z);
+        if (py !== cy)      { b.vel.y *= -0.62; p.y = prev.y; }
+        else if (px !== cx) { b.vel.x *= -0.70; p.x = prev.x; }
+        else                { b.vel.z *= -0.70; p.z = prev.z; }
+        b.vel.multiplyScalar(0.9);
+        sfx('bounce', { pos:p, gain:0.8, budget:false });
+        if (b.vel.length() < 1.4) b.life = Math.min(b.life, 1.2);
+        break;
+      }
+    }
+    if (b.life <= 0 || b.mesh.position.y < -25) {
+      if (b.blast && b.life <= 0 && b.mesh.position.y > -25) explode(b.mesh.position, b.blast);
+      scene.remove(b.mesh); balls.splice(i, 1);
+    }
+  }
+  ammoEl.textContent = balls.length;
+  ammoLabel.textContent = balls.length > MAX_BALLS ? 'PROJECTILES IN PLAY' : 'BALLS IN PLAY / MAX 3';
+
+  for (const b of balls) {
+    if (b.blast) {
+      const f = 0.4 + 0.6 * Math.abs(Math.sin(b.life * 9));
+      b.mesh.material.emissiveIntensity = f;
+      b.mesh.scale.setScalar(1 + f * 0.12);
+    }
+  }
+
+  // ---- debris
+  for (let i = debris.length - 1; i >= 0; i--) {
+    const d = debris[i];
+    d.life -= dt;
+    d.vel.y -= 20 * dt;
+    d.mesh.position.addScaledVector(d.vel, dt);
+    d.mesh.rotation.x += dt * 6; d.mesh.rotation.y += dt * 4;
+    d.mesh.scale.setScalar(Math.max(0.01, d.life));
+    if (d.life <= 0) { scene.remove(d.mesh); debris.splice(i, 1); }
+  }
+
+  // ---- world streaming
+  const pending = stream(player.pos.x, player.pos.z);
+
+  if (noteTimer > 0) { noteTimer -= dt; if (noteTimer <= 0) note.style.opacity = 0; }
+  acc += dt;
+  if (acc > 0.25) {
+    acc = 0;
+    dbgEl.innerHTML =
+      `XYZ ${player.pos.x.toFixed(0)} ${player.pos.y.toFixed(0)} ${player.pos.z.toFixed(0)}<br>` +
+      `${BIOME_NAME[column(Math.floor(player.pos.x), Math.floor(player.pos.z)).biome]}` +
+      ` · CHUNK ${cdiv(player.pos.x)} ${cdiv(player.pos.z)}<br>` +
+      `LOADED ${chunks.size}${pending ? ' · MESHING ' + pending : ''}`;
+  }
+
+  renderer.render(scene, camera);
+  renderer.autoClear = false;
+  renderer.clearDepth();
+  renderer.render(viewScene, viewCam);
+  renderer.autoClear = true;
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
