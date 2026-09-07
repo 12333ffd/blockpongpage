@@ -18,11 +18,12 @@
   .bar{width:130px; height:5px; background:#1b1a20; border:1px solid #2c2a33;}
   .bar i{display:block; height:100%; background:var(--ink); transition:width .12s linear;}
   #hpbar i{background:#c25b4e;} #stbar i{background:#6f8f7a;} #btbar i{background:#c9a24a;}
+  #carry{font-family:ui-monospace,monospace; font-size:12px; letter-spacing:.16em; color:var(--dim);}
   #hint{position:fixed; left:50%; bottom:13%; transform:translateX(-50%); font-size:15px; color:#d8d0be;
         background:rgba(6,6,10,.6); padding:7px 15px; border:1px solid #24222a; opacity:0; transition:opacity .18s;}
   #hint.on{opacity:1;}
-  #whisper{position:fixed; left:50%; top:24%; transform:translateX(-50%); font-size:22px; letter-spacing:.14em;
-           color:#b8452f; opacity:0; transition:opacity .25s;}
+  #whisper{position:fixed; left:50%; top:22%; transform:translateX(-50%); font-size:17px; letter-spacing:.05em;
+           color:#b8452f; opacity:0; transition:opacity .25s; width:max-content; max-width:70vw; text-align:center;}
   #whisper.on{opacity:1;}
   .panel{position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
          background:radial-gradient(ellipse at center,#0b0a12 0%,#040407 75%); gap:16px; text-align:center; padding:28px;}
@@ -60,9 +61,10 @@
     <div class="bar" id="stbar"><i style="width:100%"></i></div>
     <div class="bar" id="btbar"><i style="width:100%"></i></div>
   </div>
+  <div id="carry">found 0</div>
 </div>
 <div id="hint"></div>
-<div id="whisper">psst...</div>
+<div id="whisper"></div>
 <div id="journal"></div>
 
 <div id="touch">
@@ -73,7 +75,7 @@
 
 <div class="panel" id="title">
   <h1><span>the hotel</span>Rooms</h1>
-  <p>Walk the corridor. Open the door, take the next room. The layout is different every run, and the deeper you get the more things are in there with you.</p>
+  <p>Walk the corridor. Open the door, take the next room. Every tenth door something new is in here with you, and each one wants a different mistake from you.</p>
   <div class="keys">
     <b>W A S D</b><span>walk</span>
     <b>mouse</b><span>look</span>
@@ -102,11 +104,11 @@ const angDiff=(a,b)=>{let d=(a-b+Math.PI*3)%(Math.PI*2)-Math.PI; return Math.abs
 
 /* ---------- map ---------- */
 const GW=1800, GH=44;
-const EMPTY=0, WALL=1, DOOR=2, OPEN=3, LOCKER=4;
+const EMPTY=0, WALL=1, DOOR=2, OPEN=3, LOCKER=4, SHELF=5;
 let grid=new Uint8Array(GW*GH), rooms=[];
 const at=(x,y)=>(x<0||y<0||x>=GW||y>=GH)?WALL:grid[y*GW+x];
 const put=(x,y,v)=>{ if(x>=0&&y>=0&&x<GW&&y<GH) grid[y*GW+x]=v; };
-const solid=(x,y)=>{const v=at(x|0,y|0); return v===WALL||v===DOOR||v===LOCKER;};
+const solid=(x,y)=>{const v=at(x|0,y|0); return v===WALL||v===DOOR||v===LOCKER||v===SHELF;};
 
 function carve(x0,y0,w,h){ for(let y=y0;y<y0+h;y++) for(let x=x0;x<x0+w;x++) put(x,y,EMPTY); }
 
@@ -114,13 +116,16 @@ function genLevel(){
   grid.fill(WALL); rooms=[];
   let cx=4, prev=null;
   for(let i=0;i<240;i++){
-    const w=ri(6,15), h=ri(5,10);
+    const hall = i>2 && rnd()<0.14;
+    const w = hall ? ri(16,22) : ri(6,15);
+    const h = hall ? ri(11,15) : ri(5,10);
     let y0 = prev ? clamp(prev.y0+ri(-3,3),2,GH-h-3) : Math.floor(GH/2-h/2);
     if(prev){ // guarantee vertical overlap so a straight corridor always connects
       const lo=Math.max(prev.y0+1,y0+1), hi=Math.min(prev.y1-1,y0+h-2);
       if(lo>hi) y0=clamp(prev.y0,2,GH-h-3);
     }
-    const r={i, x0:cx, y0, x1:cx+w-1, y1:y0+h-1, lockers:[], door:null};
+    const r={i, x0:cx, y0, x1:cx+w-1, y1:y0+h-1, lockers:[], door:null, hall,
+             dark: i>3 && rnd()<0.26, lit:false};
     carve(r.x0,r.y0,w,h);
     if(prev){
       const lo=Math.max(prev.y0+1,r.y0+1), hi=Math.min(prev.y1-1,r.y1-1);
@@ -128,7 +133,7 @@ function genLevel(){
       for(let x=prev.x1;x<=r.x0;x++) put(x,cy,EMPTY);
       const dx=Math.floor((prev.x1+r.x0)/2);
       put(dx,cy,DOOR);
-      r.door={x:dx,y:cy};
+      r.door={x:dx, y:cy, locked: i>4 && i%7===0};
     }
     // lockers: alcoves punched into the top or bottom wall
     const n = i<3 ? 2 : ri(1,2);
@@ -138,27 +143,45 @@ function genLevel(){
       if(ly<1||ly>=GH-1) continue;
       put(lx,ly,LOCKER); r.lockers.push({x:lx,y:ly});
     }
+    // shelves and pillars, interior only — the perimeter ring always stays walkable
+    if(w>5&&h>4){
+      const dens = hall?0.13:0.09;
+      const count=Math.floor(w*h*dens);
+      for(let k=0;k<count;k++){
+        const sx=ri(r.x0+1,r.x1-1), sy=ri(r.y0+1,r.y1-1);
+        if(at(sx,sy)===EMPTY) put(sx,sy,SHELF);
+      }
+    }
     rooms.push(r); prev=r;
     cx = r.x1 + ri(4,7);
     if(cx>GW-30) break;
   }
+  if(rooms[1]&&rooms[1].door) rooms[1].door.locked=false;
+}
+
+function freeTile(r){
+  for(let k=0;k<40;k++){
+    const x=ri(r.x0,r.x1), y=ri(r.y0,r.y1);
+    if(at(x,y)===EMPTY) return {x:x+.5,y:y+.5};
+  }
+  return {x:(r.x0+r.x1)/2+.5, y:(r.y0+r.y1)/2+.5};
 }
 
 /* ---------- entities ---------- */
 const CODEX={
-  rush:{name:"Rush",tag:"door 10",text:"A black column that runs the corridor from end to end. The lights stutter before it comes. Get inside a locker and stay there until it has gone by."},
-  eyes:{name:"Eyes",tag:"door 20",text:"It stands in the room and it only wants to be looked at. Keep it out of your view and walk past it. Staring costs you."},
-  screech:{name:"Screech",tag:"door 30",text:"It whispers from the dark before it bites. Turn and look straight at it the moment you hear it."},
-  ambush:{name:"Ambush",tag:"door 40",text:"Rush, but it comes back. Four or five passes. Do not leave the locker early."},
-  dread:{name:"Dread",tag:"door 50",text:"It counts the seconds you spend standing still in a room. Keep opening doors."}
+  hum:{name:"The Hum",tag:"door 10",text:"You never see it, you only hear it thicken. It hunts the sound you make — running is a shout, walking is a mutter, standing perfectly still is silence. A locker muffles you completely."},
+  mimic:{name:"Mimic",tag:"door 20",text:"It grows a door on a wall where there is no room behind. Real doors in this building have a brass handle. The mimic never gets the handle right."},
+  wickmoth:{name:"Wickmoth",tag:"door 30",text:"It eats flame. While your lighter burns it comes straight for you and drinks the fuel. Put the light out and it forgets you were ever there."},
+  tenant:{name:"The Tenant",tag:"door 40",text:"It walks, it does not run, and it does not stop. It opens lockers. Break its line of sight and keep something solid between you — it follows you through doors."},
+  collector:{name:"Collector",tag:"door 50",text:"It wants what you are carrying, not what you are. It comes more often the heavier your pockets get, takes a handful, and leaves."}
 };
-const UNLOCK={10:"rush",20:"eyes",30:"screech",40:"ambush",50:"dread"};
+const UNLOCK={10:"hum",20:"mimic",30:"wickmoth",40:"tenant",50:"collector"};
 
 /* ---------- state ---------- */
 const P={x:0,y:0,a:0,hp:100,st:100,bat:100,light:false,hidden:false,back:null};
 let doorN=0, cur=0, running=false, roomT=0, hurtT=0, safeT=0, flick=1, flickT=0, shakeT=0;
-let known={}, sprites=[], rush=null, screech=null, pendingRush=0, screechT=0, lastDmg=0;
-let camY=0;
+let known={}, sprites=[], mobs=[], mimic=null, noiseLvl=0, lastLoud={x:0,y:0}, lockerT=0;
+let camY=0, keys=0, gold=0, humGlow=0;
 
 function reset(){
   rnd=rndSeed((Date.now()^(Math.random()*1e9))&0x7fffffff);
@@ -167,31 +190,90 @@ function reset(){
   P.x=r.x0+1.5; P.y=(r.y0+r.y1)/2+.5; P.a=0; P.hp=100; P.st=100; P.bat=100;
   P.light=false; P.hidden=false; P.back=null;
   doorN=0; cur=0; roomT=0; hurtT=0; safeT=0; flick=1; flickT=0;
-  known={}; sprites=[]; rush=null; screech=null; pendingRush=0; screechT=0;
+  known={}; sprites=[]; mobs=[]; mimic=null; noiseLvl=0; lockerT=0;
+  lastLoud={x:P.x,y:P.y};
+  keys=0; gold=0; updateCarry();
+  enterRoom(0);
   hint("Find the door. Press E to open it.",4);
 }
 
 function enterRoom(n){
-  cur=n; doorN=n; roomT=0; sprites=[]; screech=null; screechT=0;
+  const chase = mobs.filter(m=>m.t==="tenant" && Math.hypot(m.x-P.x,m.y-P.y)<11);
+  cur=n; doorN=n; roomT=0; sprites=[]; mobs=[]; mimic=null; lockerT=0;
   $("#doorn").textContent=n;
   const u=UNLOCK[n];
   if(u&&!known[u]){ known[u]=true; showJournal(CODEX[u]); }
   const r=rooms[cur];
-  // eyes
-  if(known.eyes && rnd()<0.32){
-    sprites.push({t:"eyes", x:ri(r.x0+1,r.x1-1)+.5, y:ri(r.y0,r.y1)+.5, bob:rnd()*6});
+
+  // the Tenant does not stay behind. it comes through with you.
+  for(const m of chase){
+    const d=r.door||{x:r.x0,y:(r.y0+r.y1)/2};
+    mobs.push({t:"tenant", x:d.x+.5, y:d.y+.5, seen:2, lx:P.x, ly:P.y, sp:0});
+    say("It came through with you.");
   }
-  // rush / ambush scheduling
-  const p = known.ambush?0.42:known.rush?0.3:0;
-  pendingRush = (rnd()<p) ? 1.5+rnd()*5 : 0;
-  if(known.screech) screechT = 7+rnd()*11;
+
+  // light switch for a blacked-out room
+  if(r.dark && !r.lit){
+    const p=freeTile(r);
+    sprites.push({t:"switch", x:p.x, y:p.y});
+    hint("The lights are out. Find the switch.",3);
+  }
+  // key for the locked door ahead
+  const nx=rooms[cur+1];
+  if(nx && nx.door && nx.door.locked){
+    const p=freeTile(r);
+    sprites.push({t:"key", x:p.x, y:p.y});
+    hint("The next door is locked. There is a key in here.",3.5);
+  }
+  // loot, batteries, first-aid
+  let drops=ri(0,2) + (r.hall?1:0);
+  while(drops-- > 0){
+    const p=freeTile(r), roll=rnd();
+    const t = roll<0.45 ? "gold" : roll<0.78 ? "battery" : "kit";
+    sprites.push({t, x:p.x, y:p.y, bob:rnd()*6});
+  }
+
+  // --- entities ---
+  if(known.hum && rnd()<0.34){
+    const p=farTile(r);
+    mobs.push({t:"hum", x:p.x, y:p.y, patience:26});
+    noise(1.6,90,150,.2,"lowpass"); say("Something is listening.");
+  }
+  if(known.mimic && rnd()<0.4) placeMimic(r);
+  if(known.wickmoth && rnd()<0.36){
+    const p=farTile(r);
+    mobs.push({t:"wickmoth", x:p.x, y:p.y, bob:rnd()*6, agitate:0});
+  }
+  if(known.tenant && !mobs.some(m=>m.t==="tenant") && rnd()<0.28){
+    const p=farTile(r);
+    mobs.push({t:"tenant", x:p.x, y:p.y, seen:0, lx:p.x, ly:p.y, sp:0});
+    tone(1.4,70,52,.16,"sawtooth");
+  }
+  if(known.collector && rnd() < Math.min(0.55, 0.08+gold*0.02)){
+    const p=farTile(r);
+    mobs.push({t:"collector", x:p.x, y:p.y, bob:rnd()*6, fleeing:false});
+  }
+  for(const m of mobs) sprites.push(m);
 }
 
-function spawnRush(){
-  const amb = known.ambush && rnd()<0.45;
-  const cyAvg=(rooms[cur].y0+rooms[cur].y1)/2;
-  rush={x:P.x-26, y:cyAvg, v: 15+Math.min(doorN,80)*0.06, passes: amb?ri(4,6):1, amb, warn:2.6};
-  flickT=2.6;
+function farTile(r){
+  let best=null, bd=-1;
+  for(let k=0;k<24;k++){
+    const p=freeTile(r), d=Math.hypot(p.x-P.x,p.y-P.y);
+    if(d>bd){ bd=d; best=p; }
+  }
+  return best;
+}
+
+// grow a fake door on a wall with no room behind it
+function placeMimic(r){
+  for(let k=0;k<30;k++){
+    const top=rnd()<0.5;
+    const mx=ri(r.x0+1,r.x1-1), my= top ? r.y0-1 : r.y1+1;
+    if(at(mx,my)!==WALL) continue;
+    if(at(mx, top?my-1:my+1)!==WALL) continue;   // must be solid behind it
+    put(mx,my,DOOR); mimic={x:mx,y:my}; return;
+  }
 }
 
 /* ---------- audio ---------- */
@@ -228,8 +310,6 @@ function tone(dur,f0,f1,vol,type){
 const sfxDoor =()=>{noise(.4,900,90,.35,"lowpass"); tone(.3,120,60,.2,"square");};
 const sfxLock =()=>noise(.25,2200,400,.2);
 const sfxHurt =()=>{tone(.5,220,60,.3,"sawtooth"); noise(.4,700,120,.25);};
-const sfxWhisp=()=>noise(1.0,4200,1600,.13);
-const sfxScreech=()=>{tone(.7,1900,140,.4,"sawtooth"); noise(.7,3000,300,.3);};
 const sfxClick=()=>noise(.06,3000,1200,.12);
 
 /* ---------- ui ---------- */
@@ -292,6 +372,15 @@ function toggleLight(){ if(P.bat>2){ P.light=!P.light; sfxClick(); } }
 function interact(){
   if(!running) return;
   if(P.hidden){ P.x=P.back.x; P.y=P.back.y; P.hidden=false; sfxLock(); hint("",0); return; }
+  // light switch first — it is the thing you are usually reaching for in a dark room
+  for(const s of sprites){
+    if(s.t!=="switch") continue;
+    if(Math.hypot(s.x-P.x,s.y-P.y)<1.6){
+      rooms[cur].lit=true; sprites=sprites.filter(o=>o!==s);
+      sfxClick(); tone(.4,300,420,.14,"triangle");
+      hint("Lights on.",2); return;
+    }
+  }
   const fx=P.x+Math.cos(P.a)*0.9, fy=P.y+Math.sin(P.a)*0.9;
   for(let oy=-1;oy<=1;oy++) for(let ox=-1;ox<=1;ox++){
     const tx=(fx|0)+ox, ty=(fy|0)+oy;
@@ -299,9 +388,20 @@ function interact(){
     if(d>1.7) continue;
     const v=at(tx,ty);
     if(v===DOOR){
+      if(mimic&&mimic.x===tx&&mimic.y===ty){
+        put(tx,ty,WALL); mimic=null;
+        tone(.6,900,90,.35,"sawtooth"); noise(.6,2600,300,.3);
+        damage(45,"the mimic bit you");
+        say("There was no room behind it.");
+        return;
+      }
+      const nx=rooms[cur+1], isNext = nx&&nx.door&&nx.door.x===tx&&nx.door.y===ty;
+      if(isNext && nx.door.locked){
+        if(keys<=0){ sfxLock(); hint("Locked. The key is somewhere in this room.",2.5); return; }
+        keys--; nx.door.locked=false; updateCarry(); hint("Unlocked.",1.6);
+      }
       put(tx,ty,OPEN); sfxDoor();
-      const nx=rooms[cur+1];
-      if(nx&&nx.door&&nx.door.x===tx&&nx.door.y===ty) enterRoom(cur+1);
+      if(isNext) enterRoom(cur+1);
       return;
     }
     if(v===LOCKER){
@@ -310,6 +410,24 @@ function interact(){
     }
   }
   hint("Nothing here.",1.2);
+}
+
+function updateCarry(){
+  $("#carry").textContent = (keys>0? "key ×"+keys+"   " : "") + "found "+gold;
+}
+
+function pickups(){
+  if(P.hidden) return;
+  for(const s of sprites.slice()){
+    if(s.t!=="gold"&&s.t!=="battery"&&s.t!=="kit"&&s.t!=="key") continue;
+    if(Math.hypot(s.x-P.x,s.y-P.y)>0.7) continue;
+    sprites=sprites.filter(o=>o!==s);
+    if(s.t==="gold"){ gold++; tone(.25,880,1320,.16,"triangle"); }
+    else if(s.t==="battery"){ P.bat=Math.min(100,P.bat+45); tone(.2,420,620,.14,"square"); hint("Battery.",1.4); }
+    else if(s.t==="kit"){ P.hp=Math.min(100,P.hp+35); tone(.35,300,500,.16,"sine"); hint("Patched up.",1.4); }
+    else { keys++; sfxLock(); hint("Key. The door ahead will open now.",2.4); }
+    updateCarry();
+  }
 }
 
 /* ---------- theme ---------- */
@@ -329,17 +447,19 @@ function resize(){
 addEventListener("resize",resize); resize();
 
 const FOV=Math.PI/2.9;
-function viewDist(){ return P.light?13:7.2; }
+function isDark(){ const r=rooms[cur]; return !!(r&&r.dark&&!r.lit); }
+function viewDist(){ return (P.light?13:7.2) * (isDark()?0.5:1); }
 
 function render(){
   const th=theme();
+  const dk=isDark()?0.34:1;
   const vd=viewDist(), horizon=CH/2 + camY;
   // ceiling & floor
   let g=ctx.createLinearGradient(0,0,0,horizon);
-  g.addColorStop(0,`hsl(${th.h},${th.s}%,${th.ceilL+3}%)`); g.addColorStop(1,th.fog);
+  g.addColorStop(0,`hsl(${th.h},${th.s}%,${(th.ceilL+3)*dk}%)`); g.addColorStop(1,th.fog);
   ctx.fillStyle=g; ctx.fillRect(0,0,CW,horizon+1);
   g=ctx.createLinearGradient(0,horizon,0,CH);
-  g.addColorStop(0,th.fog); g.addColorStop(1,`hsl(${th.h},${th.s}%,${th.floorL}%)`);
+  g.addColorStop(0,th.fog); g.addColorStop(1,`hsl(${th.h},${th.s}%,${th.floorL*dk}%)`);
   ctx.fillStyle=g; ctx.fillRect(0,horizon,CW,CH-horizon);
 
   const dirx=Math.cos(P.a), diry=Math.sin(P.a);
@@ -357,7 +477,7 @@ function render(){
     while(steps++<80){
       if(sdx<sdy){sdx+=ddx; mx+=sx; side=0;} else {sdy+=ddy; my+=sy; side=1;}
       const v=at(mx,my);
-      if(v===WALL||v===DOOR||v===LOCKER){ tile=v; hit=1; break; }
+      if(v===WALL||v===DOOR||v===LOCKER||v===SHELF){ tile=v; hit=1; break; }
     }
     let dist = side===0 ? (sdx-ddx) : (sdy-ddy);
     if(!hit) dist=60;
@@ -373,9 +493,17 @@ function render(){
     let hue=th.h, sat=th.s, lig=bright*34;
     if(tile===DOOR){ hue=16; sat=30; lig=bright*26; }
     if(tile===LOCKER){ hue=205; sat=10; lig=bright*30; }
+    if(tile===SHELF){ hue=24; sat=26; lig=bright*20; }
+    let ry=y0, rh=hgt;
+    if(tile===SHELF){ rh=hgt*0.72; ry=horizon+hgt/2-rh; }   // stands on the floor, short
     if(lig<0.4){ ctx.fillStyle=th.fog; } else ctx.fillStyle=`hsl(${hue},${sat}%,${lig.toFixed(1)}%)`;
-    ctx.fillRect(r*STEP,y0,STEP+1,hgt);
-    if(tile===DOOR&&bright>0.12){ // handle
+    ctx.fillRect(r*STEP,ry,STEP+1,rh);
+    if(tile===SHELF&&bright>0.1){
+      ctx.fillStyle=`hsl(24,20%,${(bright*8).toFixed(1)}%)`;
+      ctx.fillRect(r*STEP, ry+rh*0.34, STEP+1, Math.max(1,rh*0.05));
+      ctx.fillRect(r*STEP, ry+rh*0.68, STEP+1, Math.max(1,rh*0.05));
+    }
+    if(tile===DOOR&&bright>0.12&&!(mimic&&mimic.x===mx&&mimic.y===my)){ // handle: real doors only
       ctx.fillStyle=`hsl(46,40%,${(bright*44).toFixed(1)}%)`;
       ctx.fillRect(r*STEP, horizon+hgt*0.06, STEP+1, Math.max(1,hgt*0.03));
     }
@@ -401,25 +529,20 @@ function render(){
     drawSprite(s,scr,horizon,h,bright,ty);
   }
 
-  // rush overlay
-  if(rush){
-    const d=rush.x-P.x, ad=Math.abs(d);
-    if(ad<20){
-      const near=clamp(1-ad/20,0,1);
-      const w=CW*near*2.2, hh=CH*near*2.4;
-      const cxp = CW/2 + (Math.cos(P.a)>0? -d:d)*8;
-      ctx.save();
-      ctx.globalAlpha=clamp(near*1.5,0,1);
-      ctx.fillStyle="#000"; ctx.beginPath(); ctx.ellipse(cxp,horizon,w/2,hh/2,0,0,7); ctx.fill();
-      if(near>0.35){
-        const s=near*CH*0.5;
-        ctx.fillStyle=`rgba(190,60,40,${clamp((near-.35)*2,0,.9)})`;
-        ctx.beginPath(); ctx.ellipse(cxp-s*.28,horizon-s*.12,s*.16,s*.08,-0.3,0,7); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(cxp+s*.28,horizon-s*.12,s*.16,s*.08,0.3,0,7); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(cxp,horizon+s*.3,s*.2,s*.26,0,0,7); ctx.fill();
-      }
-      ctx.restore();
+  // the Hum is invisible — the room itself reacts to it
+  if(humGlow>0.02){
+    ctx.save();
+    ctx.globalAlpha=clamp(humGlow*0.55,0,0.75);
+    const rg=ctx.createRadialGradient(CW/2,CH/2,CH*0.1,CW/2,CH/2,CH*0.9);
+    rg.addColorStop(0,"rgba(0,0,0,0)"); rg.addColorStop(1,"#120204");
+    ctx.fillStyle=rg; ctx.fillRect(0,0,CW,CH);
+    const n=Math.floor(humGlow*26);
+    ctx.globalAlpha=humGlow*0.16; ctx.fillStyle="#000";
+    for(let i=0;i<n;i++){
+      const yy=Math.random()*CH, hh=1+Math.random()*3;
+      ctx.fillRect(0,yy,CW,hh);
     }
+    ctx.restore();
   }
 
   // hidden-in-locker framing
@@ -437,27 +560,109 @@ function render(){
 }
 
 function drawSprite(s,scr,horizon,h,b,ty){
-  if(s.t==="eyes"){
-    const w=h*0.5, top=horizon-h*0.42;
-    ctx.fillStyle=`rgba(4,4,8,${clamp(b*1.4,0,1)})`;
-    ctx.beginPath(); ctx.ellipse(scr,top+h*0.42,w*0.42,h*0.42,0,0,7); ctx.fill();
-    const gl=0.45+0.55*Math.sin(performance.now()/380+s.bob);
-    ctx.fillStyle=`rgba(255,${90+gl*60|0},60,${clamp(b*(.6+gl*.4),0,1)})`;
-    for(const off of [-0.16,0.16]){
-      ctx.beginPath(); ctx.ellipse(scr+w*off,top+h*0.3,w*0.115,w*0.075,0,0,7); ctx.fill();
+  const bob=Math.sin(performance.now()/520+(s.bob||0))*h*0.012;
+  if(s.t==="gold"||s.t==="battery"||s.t==="kit"||s.t==="key"){
+    const w=h*0.1, base=horizon+h*0.30+bob;
+    ctx.save(); ctx.globalAlpha=clamp(b*1.2,0,1);
+    if(s.t==="gold"){
+      ctx.fillStyle="#d8ab3f";
+      ctx.beginPath(); ctx.ellipse(scr,base,w*0.5,w*0.6,0,0,7); ctx.fill();
+      ctx.fillStyle="#f2d780";
+      ctx.beginPath(); ctx.ellipse(scr,base-w*0.1,w*0.28,w*0.34,0,0,7); ctx.fill();
+    } else if(s.t==="battery"){
+      ctx.fillStyle="#2f6b4e"; ctx.fillRect(scr-w*0.32,base-w*0.7,w*0.64,w*1.3);
+      ctx.fillStyle="#c8c2b0"; ctx.fillRect(scr-w*0.12,base-w*0.85,w*0.24,w*0.18);
+    } else if(s.t==="kit"){
+      ctx.fillStyle="#d8d2c4"; ctx.fillRect(scr-w*0.5,base-w*0.42,w,w*0.85);
+      ctx.fillStyle="#b8452f";
+      ctx.fillRect(scr-w*0.09,base-w*0.28,w*0.18,w*0.55);
+      ctx.fillRect(scr-w*0.32,base-w*0.05,w*0.64,w*0.18);
+    } else {
+      ctx.fillStyle="#e0bb52";
+      ctx.beginPath(); ctx.ellipse(scr,base-w*0.45,w*0.26,w*0.26,0,0,7); ctx.fill();
+      ctx.fillRect(scr-w*0.07,base-w*0.35,w*0.14,w*0.85);
+      ctx.fillRect(scr,base+w*0.25,w*0.28,w*0.12);
+      ctx.fillRect(scr,base+w*0.45,w*0.22,w*0.12);
     }
-    ctx.fillStyle="rgba(0,0,0,.9)";
-    for(const off of [-0.16,0.16]){
-      ctx.beginPath(); ctx.ellipse(scr+w*off,top+h*0.3,w*0.035,w*0.05,0,0,7); ctx.fill();
+    ctx.restore();
+    // faint glow so loot reads in the dark
+    ctx.globalAlpha=clamp(b*0.22,0,1);
+    ctx.fillStyle= s.t==="kit"?"#ffd9d0":"#ffe6a8";
+    ctx.beginPath(); ctx.ellipse(scr,base,w*1.5,w*1.5,0,0,7); ctx.fill();
+    ctx.globalAlpha=1;
+    return;
+  }
+  if(s.t==="switch"){
+    const w=h*0.07, base=horizon;
+    ctx.globalAlpha=clamp(b*1.3,0,1);
+    ctx.fillStyle="#cfc9b8"; ctx.fillRect(scr-w*0.5,base-w*0.8,w,w*1.6);
+    ctx.fillStyle="#8a8478"; ctx.fillRect(scr-w*0.18,base-w*0.3,w*0.36,w*0.7);
+    ctx.globalAlpha=clamp(b*0.3,0,1);
+    ctx.fillStyle="#fff6d8";
+    ctx.beginPath(); ctx.ellipse(scr,base,w*2.4,w*2.4,0,0,7); ctx.fill();
+    ctx.globalAlpha=1;
+    return;
+  }
+  if(s.t==="tenant"){
+    // tall, thin, stooped; a long pale face and nothing else
+    const w=h*0.30, top=horizon-h*0.52;
+    ctx.globalAlpha=clamp(b*1.5,0,1);
+    ctx.fillStyle="#07070a";
+    ctx.beginPath();
+    ctx.moveTo(scr-w*0.34, horizon+h*0.42);
+    ctx.lineTo(scr-w*0.20, top+h*0.30);
+    ctx.lineTo(scr+w*0.20, top+h*0.30);
+    ctx.lineTo(scr+w*0.34, horizon+h*0.42);
+    ctx.closePath(); ctx.fill();
+    ctx.fillRect(scr-w*0.06, top+h*0.12, w*0.12, h*0.22);      // neck
+    ctx.fillStyle="#cfc7b6";
+    ctx.beginPath(); ctx.ellipse(scr, top+h*0.08, w*0.16, h*0.09, 0,0,7); ctx.fill();
+    ctx.fillStyle="#0a0a0d";
+    ctx.beginPath(); ctx.ellipse(scr, top+h*0.11, w*0.05, h*0.035, 0,0,7); ctx.fill();
+    ctx.globalAlpha=1;
+    return;
+  }
+  if(s.t==="wickmoth"){
+    // pale moth, wings beating faster the closer it gets to a flame
+    const w=h*0.28, cy2=horizon-h*0.05+bob*3;
+    const beat=Math.sin(performance.now()/(P.light?70:220)+(s.bob||0));
+    ctx.globalAlpha=clamp(b*1.3,0,1);
+    ctx.fillStyle=P.light?"#d9c9a4":"#8f8878";
+    for(const sgn of [-1,1]){
+      ctx.beginPath();
+      ctx.ellipse(scr+sgn*w*0.34, cy2, w*0.30*(0.55+Math.abs(beat)*0.45), w*0.44, sgn*beat*0.5, 0,7);
+      ctx.fill();
     }
-  } else if(s.t==="screech"){
-    const w=h*0.34;
-    ctx.fillStyle=`rgba(2,2,4,${clamp(b*1.6,0,1)})`;
-    ctx.beginPath(); ctx.ellipse(scr,horizon,w*0.5,w*0.55,0,0,7); ctx.fill();
-    ctx.fillStyle=`rgba(230,230,225,${clamp(b,0,1)})`;
-    ctx.beginPath(); ctx.ellipse(scr,horizon-w*0.06,w*0.2,w*0.13,0,0,7); ctx.fill();
+    ctx.fillStyle="#3a3227";
+    ctx.beginPath(); ctx.ellipse(scr, cy2, w*0.10, w*0.34, 0,0,7); ctx.fill();
+    if(P.light){
+      ctx.globalAlpha=clamp(b*0.5,0,1); ctx.fillStyle="#ffcf7a";
+      ctx.beginPath(); ctx.ellipse(scr, cy2-w*0.3, w*0.05, w*0.05, 0,0,7); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+    return;
+  }
+  if(s.t==="collector"){
+    // small, hunched, dragging a full sack
+    const w=h*0.26, base=horizon+h*0.26;
+    ctx.globalAlpha=clamp(b*1.4,0,1);
+    ctx.fillStyle="#14121a";
+    ctx.beginPath(); ctx.ellipse(scr, base-w*0.5, w*0.42, w*0.55, 0,0,7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(scr-w*0.1, base-w*1.05, w*0.22, w*0.22, 0,0,7); ctx.fill();
+    ctx.fillStyle="#6a5a2e";
+    ctx.beginPath(); ctx.ellipse(scr+w*0.5, base-w*0.35, w*0.32, w*0.34, 0,0,7); ctx.fill();
+    ctx.fillStyle="#e2bb52"; ctx.globalAlpha=clamp(b*0.9,0,1);
+    ctx.beginPath(); ctx.ellipse(scr+w*0.5, base-w*0.62, w*0.09, w*0.07, 0,0,7); ctx.fill();
+    ctx.globalAlpha=1;
+    return;
+  }
+  if(s.t==="hum"){
+    // not visible, only a smear where the air is wrong
+    ctx.globalAlpha=clamp(b*0.14,0,0.2);
     ctx.fillStyle="#000";
-    ctx.beginPath(); ctx.ellipse(scr,horizon-w*0.06,w*0.07,w*0.09,0,0,7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(scr, horizon, h*0.22, h*0.5, 0,0,7); ctx.fill();
+    ctx.globalAlpha=1;
+    return;
   }
 }
 
@@ -490,16 +695,18 @@ function die(cause){
   running=false; document.exitPointerLock&&document.exitPointerLock();
   $("#deadby").textContent=cause;
   $("#deadn").textContent=doorN;
-  const tips={ "rush caught you":"The lights flicker first. That is your warning — find a locker before it arrives.",
-    "ambush caught you":"Ambush makes several passes. Count them out before you leave the locker.",
-    "you looked too long":"Eyes only hurts you while it is on screen. Turn away and walk past it.",
-    "screech got you":"When you hear the whisper, turn and put it in the centre of your view.",
-    "dread found you":"You stood still too long. Keep moving toward the next door." };
-  $("#deadtip").textContent=tips[cause]||"";
+  const tips={ "the hum found you":"It follows the noise you make. Stop moving, or get into a locker, and it drifts off.",
+    "the mimic bit you":"Check the handle. Every real door in this building has one.",
+    "the wickmoth got you":"It only hunts a lit flame. Kill the lighter and it loses interest immediately.",
+    "the tenant caught you":"You cannot outhide it, only outwalk it. Break its sightline and keep a wall between you.",
+    "the tenant opened the locker":"Lockers do not stop the Tenant. Keep moving toward the door instead.",
+    "it opened the locker":"You stayed hidden too long. A locker buys seconds, not minutes." };
+  $("#deadtip").textContent=(tips[cause]||"")+"  You found "+gold+" pieces of loot.";
   $("#dead").classList.remove("hidden");
 }
 
 function update(dt){
+  const prevX=P.x, prevY=P.y;
   roomT+=dt;
   // lighter battery
   if(P.light){ P.bat=Math.max(0,P.bat-7*dt); if(P.bat<=0){P.light=false; sfxClick();} }
@@ -513,63 +720,32 @@ function update(dt){
   if(safeT>9 && P.hp>0) P.hp=Math.min(100,P.hp+3.5*dt);
 
   move(dt);
+  pickups();
+
+  // interactable prompts
+  for(const s of sprites){
+    if(s.t==="switch"&&Math.hypot(s.x-P.x,s.y-P.y)<1.6){ hint("Press E for the lights",.4); break; }
+  }
 
   // door proximity hint
   const nx=rooms[cur+1];
   if(nx&&nx.door&&Math.hypot(nx.door.x+.5-P.x,nx.door.y+.5-P.y)<2.2&&at(nx.door.x,nx.door.y)===DOOR)
     hint("Press E to open door "+(cur+1),.4);
 
-  // ---- rush ----
-  if(pendingRush>0){
-    pendingRush-=dt;
-    if(pendingRush<=0){ spawnRush(); pendingRush=0; }
-  }
-  if(rush){
-    if(rush.warn>0){ rush.warn-=dt; if(rush.warn<=0) noise(2.4,180,900,.35,"lowpass"); }
-    else {
-      const dir=Math.sign(rush.v);
-      rush.x+=rush.v*dt;
-      if(Math.abs(rush.x-P.x)<1.4 && !P.hidden) damage(100, rush.amb?"ambush caught you":"rush caught you");
-      if((dir>0&&rush.x>P.x+30)||(dir<0&&rush.x<P.x-30)){
-        rush.passes--;
-        if(rush.passes<=0){ rush=null; if(P.hidden) hint("It has gone. Press E.",2.5); }
-        else { rush.v*=-1; rush.warn=0.5+rnd()*0.8; }
-      }
-    }
-  }
-  // ---- eyes ----
-  for(const s of sprites){
-    if(s.t!=="eyes"||P.hidden) continue;
-    const d=Math.hypot(s.x-P.x,s.y-P.y);
-    const ang=Math.atan2(s.y-P.y,s.x-P.x);
-    if(d<13 && angDiff(ang,P.a)<0.42) damage(26*dt,"you looked too long");
-  }
-  // ---- screech ----
-  if(known.screech && !screech && !P.hidden){
-    screechT-=dt;
-    if(screechT<=0){
-      const a=P.a+Math.PI+(rnd()-.5)*2.2;
-      screech={x:P.x+Math.cos(a)*3.4, y:P.y+Math.sin(a)*3.4, t:1.5, seen:false, bob:0, sp:null};
-      sfxWhisp(); $("#whisper").classList.add("on");
-      screech.sp={t:"screech",x:screech.x,y:screech.y,bob:0}; sprites.push(screech.sp);
-      screechT=14+rnd()*14;
-    }
-  }
-  if(screech){
-    screech.t-=dt;
-    const ang=Math.atan2(screech.y-P.y,screech.x-P.x);
-    if(angDiff(ang,P.a)<0.34) screech.seen=true;
-    if(screech.seen||screech.t<=0){
-      if(!screech.seen){ sfxScreech(); damage(40,"screech got you"); }
-      $("#whisper").classList.remove("on");
-      sprites=sprites.filter(s=>s!==screech.sp); screech=null;
-    }
-  }
-  // ---- dread ----
-  if(known.dread){
-    if(roomT>70) damage(60*dt,"dread found you");
-    else if(roomT>60&&Math.random()<0.02) tone(.5,90,60,.15,"sawtooth");
-  }
+  // ---- noise you make, which is what the Hum tracks ----
+  const spd=Math.hypot(P.x-prevX,P.y-prevY)/Math.max(dt,1e-4);
+  const made = P.hidden ? 0 : spd<0.15 ? 0 : spd>3.4 ? 1 : 0.45;
+  noiseLvl += (made-noiseLvl)*Math.min(1,dt*3);
+  if(made>0.2){ lastLoud.x=P.x; lastLoud.y=P.y; }
+
+  // ---- locker patience: you cannot live in there ----
+  if(P.hidden){
+    lockerT+=dt;
+    if(lockerT>16&&lockerT-dt<=16) { sfxLock(); say("Something taps on the door."); }
+    if(lockerT>21){ P.x=P.back.x; P.y=P.back.y; P.hidden=false; lockerT=0; damage(28,"it opened the locker"); }
+  } else lockerT=0;
+
+  updateMobs(dt);
 
   // hud
   $("#hpbar i").style.width=P.hp+"%";
@@ -580,7 +756,107 @@ function update(dt){
   if(P.hp<35 && Math.random()<dt*2.2) tone(.16,70,45,.18,"sine");
 }
 
-/* ---------- loop ---------- */
+/* ---------- entity behaviour ---------- */
+function los(ax,ay,bx,by){
+  const d=Math.hypot(bx-ax,by-ay), n=Math.ceil(d/0.2);
+  for(let i=1;i<n;i++){
+    const t=i/n;
+    if(solid(ax+(bx-ax)*t, ay+(by-ay)*t)) return false;
+  }
+  return true;
+}
+function step(m,tx,ty,sp,dt){
+  const dx=tx-m.x, dy=ty-m.y, d=Math.hypot(dx,dy)||1;
+  const vx=dx/d*sp*dt, vy=dy/d*sp*dt;
+  if(!solid(m.x+vx+Math.sign(vx)*0.2, m.y)) m.x+=vx;
+  if(!solid(m.x, m.y+vy+Math.sign(vy)*0.2)) m.y+=vy;
+}
+function kill(m){ mobs=mobs.filter(o=>o!==m); sprites=sprites.filter(o=>o!==m); }
+
+let sayT=0;
+function say(t){ $("#whisper").textContent=t; $("#whisper").classList.add("on"); sayT=2.6; }
+
+function updateMobs(dt){
+  if(sayT>0){ sayT-=dt; if(sayT<=0) $("#whisper").classList.remove("on"); }
+  let humNear=0;
+
+  for(const m of mobs.slice()){
+    const dist=Math.hypot(m.x-P.x,m.y-P.y);
+
+    if(m.t==="hum"){
+      // hunts the noise you make. silence starves it, and silence is also safety.
+      const quiet = noiseLvl<0.12;
+      if(quiet){
+        // it has nothing to follow, so it mills around where it last heard you
+        if(!m.wx||Math.hypot(m.wx-m.x,m.wy-m.y)<0.5||Math.random()<dt*0.4){
+          m.wx=lastLoud.x+(Math.random()-0.5)*7; m.wy=lastLoud.y+(Math.random()-0.5)*7;
+        }
+        step(m,m.wx,m.wy,0.75,dt);
+        m.patience-=dt;
+        if(m.patience<=0){ kill(m); say("It drifted off."); }
+      } else {
+        step(m, noiseLvl>0.6?P.x:lastLoud.x, noiseLvl>0.6?P.y:lastLoud.y, 1.0+noiseLvl*2.8, dt);
+        m.patience=Math.min(26,m.patience+dt*0.6);
+        if(dist<0.9 && !P.hidden) damage(100,"the hum found you");
+      }
+      humNear=Math.max(humNear, clamp(1-dist/9,0,1));
+      if(Math.random()<dt*(0.3+humNear)) tone(.5,58+humNear*30,50,.05+humNear*0.2,"sawtooth");
+      if(humNear>0.55) flickT=Math.max(flickT,0.1);
+      continue;
+    }
+
+    if(m.t==="wickmoth"){
+      // drinks flame. it only cares about you while the lighter is lit.
+      if(P.light && !P.hidden){
+        m.agitate=Math.min(1,m.agitate+dt*0.8);
+        step(m,P.x,P.y,1.6+m.agitate*2.4,dt);
+        if(dist<6){ P.bat=Math.max(0,P.bat-9*dt); if(P.bat<=0) P.light=false; }
+        if(dist<1.0) damage(24*dt,"the wickmoth got you");
+        if(Math.random()<dt*2) tone(.12,1400+Math.random()*700,900,.05,"triangle");
+      } else {
+        m.agitate=Math.max(0,m.agitate-dt*0.5);
+        step(m, m.x+(m.x-P.x), m.y+(m.y-P.y), 0.7, dt);
+      }
+      continue;
+    }
+
+    if(m.t==="tenant"){
+      // slow, relentless, checks lockers, follows you through doors
+      const canSee = los(m.x,m.y,P.x,P.y) && dist<18;
+      if(canSee){ m.seen=2.5; m.lx=P.x; m.ly=P.y; }
+      else m.seen=Math.max(0,m.seen-dt);
+      if(m.seen<=0 && Math.hypot(m.lx-m.x,m.ly-m.y)<0.7){   // lost you: search the room
+        const r=rooms[cur]; m.lx=ri(r.x0,r.x1)+.5; m.ly=ri(r.y0,r.y1)+.5;
+      }
+      step(m,m.lx,m.ly,m.seen>0?1.45:1.05,dt);
+      if(P.hidden && dist<1.3){
+        P.x=P.back.x; P.y=P.back.y; P.hidden=false;
+        damage(35,"the tenant opened the locker"); say("It found the locker.");
+      }
+      if(dist<0.95 && !P.hidden) damage(38*dt,"the tenant caught you");
+      if(Math.random()<dt*0.7) tone(.3,64,58,.06+clamp(1-dist/14,0,1)*0.14,"sawtooth");
+      continue;
+    }
+
+    if(m.t==="collector"){
+      // wants your pockets, not your life
+      if(m.fleeing){
+        step(m, m.x*2-P.x, m.y*2-P.y, 3.4, dt);
+        m.gone=(m.gone||0)+dt; if(m.gone>3) kill(m);
+      } else {
+        step(m,P.x,P.y,2.15,dt);
+        if(dist<0.8 && !P.hidden){
+          const took=Math.min(gold,ri(2,5));
+          gold-=took; updateCarry(); m.fleeing=true;
+          tone(.4,700,240,.2,"square"); sfxLock();
+          say(took? "It took "+took+" from your pockets." : "It found nothing on you.");
+        }
+      }
+      continue;
+    }
+  }
+  humGlow += (humNear-humGlow)*Math.min(1,dt*4);
+}
 let last=performance.now();
 function frame(t){
   const dt=Math.min(0.05,(t-last)/1000); last=t;
