@@ -173,15 +173,20 @@ const CODEX={
   mimic:{name:"Mimic",tag:"door 20",text:"It grows a door on a wall where there is no room behind. Real doors in this building have a brass handle. The mimic never gets the handle right."},
   wickmoth:{name:"Wickmoth",tag:"door 30",text:"It eats flame. While your lighter burns it comes straight for you and drinks the fuel. Put the light out and it forgets you were ever there."},
   tenant:{name:"The Tenant",tag:"door 40",text:"It walks, it does not run, and it does not stop. It opens lockers. Break its line of sight and keep something solid between you — it follows you through doors."},
-  collector:{name:"Collector",tag:"door 50",text:"It wants what you are carrying, not what you are. It comes more often the heavier your pockets get, takes a handful, and leaves."}
+  collector:{name:"Collector",tag:"door 50",text:"It wants what you are carrying, not what you are. It comes more often the heavier your pockets get, takes a handful, and leaves."},
+  understudy:{name:"The Understudy",tag:"door 75",text:"It is your shape and it has your pace. It takes a step for every step you take and stops when you stop, so it can never be outrun — only outcornered. Put furniture between you and reach the door."}
 };
-const UNLOCK={10:"hum",20:"mimic",30:"wickmoth",40:"tenant",50:"collector"};
+const UNLOCK={10:"hum",20:"mimic",30:"wickmoth",40:"tenant",50:"collector",75:"understudy"};
+
+// how hard the building leans on you, 0 at door 50 and 1 by door 120
+const lean=()=>clamp((doorN-45)/75,0,1);
+const paceUp=()=>1+Math.max(0,doorN-60)*0.0035;
 
 /* ---------- state ---------- */
 const P={x:0,y:0,a:0,hp:100,st:100,bat:100,light:false,hidden:false,back:null};
 let doorN=0, cur=0, running=false, roomT=0, hurtT=0, safeT=0, flick=1, flickT=0, shakeT=0;
 let known={}, sprites=[], mobs=[], mimic=null, noiseLvl=0, lastLoud={x:0,y:0}, lockerT=0;
-let camY=0, keys=0, gold=0, humGlow=0;
+let camY=0, keys=0, gold=0, humGlow=0, playerSpd=0;
 
 function reset(){
   rnd=rndSeed((Date.now()^(Math.random()*1e9))&0x7fffffff);
@@ -233,23 +238,44 @@ function enterRoom(n){
     sprites.push({t, x:p.x, y:p.y, bob:rnd()*6});
   }
 
-  // --- entities ---
-  if(known.hum && rnd()<0.34){
+  // --- shelter: every twenty-fifth door is a room that lets you breathe ---
+  const safe = n>0 && n%25===0;
+  if(safe){
+    r.dark=false; r.lit=true; mobs.length=0; sprites=sprites.filter(s=>s.t!=="switch");
+    for(const t of ["battery","kit","gold","gold"]){
+      const p=freeTile(r); sprites.push({t, x:p.x, y:p.y, bob:rnd()*6});
+    }
+    say("Shelter. Nothing follows you in here.");
+    tone(1.6,220,330,.14,"triangle");
+    for(const m of mobs) sprites.push(m);
+    return;
+  }
+
+  // --- entities. the deeper you are, the more of them and the faster they move ---
+  const L=lean(), cap = doorN<60 ? 2 : doorN<85 ? 3 : 4;
+  const room=()=>mobs.length<cap;
+
+  if(known.hum && room() && rnd()<0.34+0.20*L){
     const p=farTile(r);
-    mobs.push({t:"hum", x:p.x, y:p.y, patience:26});
+    mobs.push({t:"hum", x:p.x, y:p.y, patience:26+14*L});
     noise(1.6,90,150,.2,"lowpass"); say("Something is listening.");
   }
-  if(known.mimic && rnd()<0.4) placeMimic(r);
-  if(known.wickmoth && rnd()<0.36){
+  if(known.mimic && rnd()<0.40+0.18*L) placeMimic(r);
+  if(known.wickmoth && room() && rnd()<0.36+0.18*L){
     const p=farTile(r);
     mobs.push({t:"wickmoth", x:p.x, y:p.y, bob:rnd()*6, agitate:0});
   }
-  if(known.tenant && !mobs.some(m=>m.t==="tenant") && rnd()<0.28){
+  if(known.tenant && room() && !mobs.some(m=>m.t==="tenant") && rnd()<0.28+0.24*L){
     const p=farTile(r);
     mobs.push({t:"tenant", x:p.x, y:p.y, seen:0, lx:p.x, ly:p.y, sp:0});
     tone(1.4,70,52,.16,"sawtooth");
   }
-  if(known.collector && rnd() < Math.min(0.55, 0.08+gold*0.02)){
+  if(known.understudy && room() && rnd()<0.22+0.30*L){
+    const p=farTile(r);
+    mobs.push({t:"understudy", x:p.x, y:p.y, bob:0});
+    tone(.9,140,120,.14,"triangle"); say("It stood up when you did.");
+  }
+  if(known.collector && room() && rnd() < Math.min(0.55, 0.08+gold*0.02)){
     const p=farTile(r);
     mobs.push({t:"collector", x:p.x, y:p.y, bob:rnd()*6, fleeing:false});
   }
@@ -603,6 +629,24 @@ function drawSprite(s,scr,horizon,h,b,ty){
     ctx.globalAlpha=1;
     return;
   }
+  if(s.t==="understudy"){
+    // a silhouette with your proportions and no face at all
+    const w=h*0.26, top=horizon-h*0.40;
+    ctx.globalAlpha=clamp(b*1.5,0,1);
+    ctx.fillStyle="#050508";
+    ctx.beginPath();
+    ctx.moveTo(scr-w*0.40, horizon+h*0.40);
+    ctx.lineTo(scr-w*0.30, top+h*0.26);
+    ctx.lineTo(scr+w*0.30, top+h*0.26);
+    ctx.lineTo(scr+w*0.40, horizon+h*0.40);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(scr, top+h*0.14, w*0.20, h*0.11, 0,0,7); ctx.fill();
+    ctx.globalAlpha=clamp(b*0.35,0,1);
+    ctx.strokeStyle="#5c5468"; ctx.lineWidth=Math.max(1,h*0.004);
+    ctx.beginPath(); ctx.ellipse(scr, top+h*0.14, w*0.21, h*0.12, 0,0,7); ctx.stroke();
+    ctx.globalAlpha=1;
+    return;
+  }
   if(s.t==="tenant"){
     // tall, thin, stooped; a long pale face and nothing else
     const w=h*0.30, top=horizon-h*0.52;
@@ -700,7 +744,8 @@ function die(cause){
     "the wickmoth got you":"It only hunts a lit flame. Kill the lighter and it loses interest immediately.",
     "the tenant caught you":"You cannot outhide it, only outwalk it. Break its sightline and keep a wall between you.",
     "the tenant opened the locker":"Lockers do not stop the Tenant. Keep moving toward the door instead.",
-    "it opened the locker":"You stayed hidden too long. A locker buys seconds, not minutes." };
+    "it opened the locker":"You stayed hidden too long. A locker buys seconds, not minutes.",
+    "the understudy reached you":"It matches your speed exactly, so running in a straight line only holds it. Cut corners around shelves and head for the door." };
   $("#deadtip").textContent=(tips[cause]||"")+"  You found "+gold+" pieces of loot.";
   $("#dead").classList.remove("hidden");
 }
@@ -734,6 +779,7 @@ function update(dt){
 
   // ---- noise you make, which is what the Hum tracks ----
   const spd=Math.hypot(P.x-prevX,P.y-prevY)/Math.max(dt,1e-4);
+  playerSpd=spd;
   const made = P.hidden ? 0 : spd<0.15 ? 0 : spd>3.4 ? 1 : 0.45;
   noiseLvl += (made-noiseLvl)*Math.min(1,dt*3);
   if(made>0.2){ lastLoud.x=P.x; lastLoud.y=P.y; }
@@ -766,6 +812,7 @@ function los(ax,ay,bx,by){
   return true;
 }
 function step(m,tx,ty,sp,dt){
+  sp*=paceUp();
   const dx=tx-m.x, dy=ty-m.y, d=Math.hypot(dx,dy)||1;
   const vx=dx/d*sp*dt, vy=dy/d*sp*dt;
   if(!solid(m.x+vx+Math.sign(vx)*0.2, m.y)) m.x+=vx;
@@ -835,6 +882,15 @@ function updateMobs(dt){
       }
       if(dist<0.95 && !P.hidden) damage(38*dt,"the tenant caught you");
       if(Math.random()<dt*0.7) tone(.3,64,58,.06+clamp(1-dist/14,0,1)*0.14,"sawtooth");
+      continue;
+    }
+
+    if(m.t==="understudy"){
+      // your shape, your pace. it takes a step for every step you take.
+      const sp = P.hidden ? 0.25 : Math.max(0.3, Math.min(playerSpd*0.97, 4.6));
+      step(m,P.x,P.y,sp,dt);
+      if(dist<1.0 && !P.hidden) damage(46*dt,"the understudy reached you");
+      if(dist<4 && Math.random()<dt*1.4) tone(.14,150,130,.05,"triangle");
       continue;
     }
 
