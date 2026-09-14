@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DEEPVEIN — infinite mine</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root{
+    --ink:#07090c;
+    --panel:rgba(10,14,20,.82);
+    --edge:#1d2a38;
+    --pick:#5fe6ff;
+    --dust:#9fb0c0;
+    --warm:#ffcf70;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--ink);
+    font-family:"Segoe UI Semibold","Trebuchet MS",system-ui,sans-serif;color:#e7eef5;
+    -webkit-font-smoothing:antialiased;user-select:none}
+  canvas{display:block}
+  #hud{position:fixed;inset:0;pointer-events:none}
+  .panel{background:var(--panel);border:1px solid var(--edge);border-radius:4px;
+    backdrop-filter:blur(3px)}
+  .panel h3{margin:0;padding:7px 10px;font-size:12px;letter-spacing:.08em;
+    color:#8ea3b6;border-bottom:1px solid var(--edge);font-weight:600}
+
+  /* ---- top left: totals ---- */
+  #totals{position:absolute;left:12px;top:12px;padding:10px 12px;min-width:190px}
+  #mined{font-size:23px;line-height:1.05;font-variant-numeric:tabular-nums;color:#fff}
+  #minedlbl{font-size:11px;color:#7e93a6;margin-bottom:2px}
+  #depth{margin-top:8px;font-size:13px;color:#b9c9d8;font-variant-numeric:tabular-nums}
+  #coins{margin-top:3px;font-size:13px;color:var(--warm);font-variant-numeric:tabular-nums}
+
+  /* ---- left: inventory ---- */
+  #inv{position:absolute;left:12px;top:130px;bottom:14px;width:262px;display:flex;flex-direction:column;
+    pointer-events:auto}
+  #invsearch{margin:7px 8px;padding:5px 7px;background:#060a0f;border:1px solid var(--edge);
+    color:#cfe0ee;border-radius:3px;font:inherit;font-size:12px;outline:none}
+  #invsearch:focus{border-color:var(--pick)}
+  #invlist{overflow-y:auto;padding:0 4px 6px}
+  #invlist::-webkit-scrollbar{width:7px}
+  #invlist::-webkit-scrollbar-thumb{background:#22323f;border-radius:4px}
+  .row{display:flex;justify-content:space-between;gap:6px;padding:2px 6px;font-size:12.5px;
+    border-radius:3px;align-items:baseline}
+  .row:hover{background:#121c26}
+  .row .ct{color:#7e93a6;font-variant-numeric:tabular-nums;font-size:11.5px}
+  .empty{padding:12px 10px;font-size:12px;color:#5f7285;line-height:1.5}
+
+  /* ---- bottom centre: target ---- */
+  #target{position:absolute;left:50%;bottom:74px;transform:translateX(-50%);width:330px;
+    text-align:center;padding:6px 10px 9px;opacity:0;transition:opacity .12s}
+  #trarity{font-size:11px;color:#8ea3b6;letter-spacing:.04em}
+  #trname{font-size:19px;margin-top:1px}
+  #bar{height:4px;margin-top:7px;background:#0c141c;border-radius:3px;overflow:hidden}
+  #barfill{height:100%;width:0;background:var(--pick)}
+
+  /* ---- crosshair ---- */
+  #cross{position:absolute;left:50%;top:50%;width:18px;height:18px;margin:-9px 0 0 -9px;opacity:.85}
+  #cross:before,#cross:after{content:"";position:absolute;background:#dff4ff}
+  #cross:before{left:8px;top:0;width:2px;height:18px}
+  #cross:after{top:8px;left:0;height:2px;width:18px}
+
+  /* ---- right side buttons ---- */
+  #side{position:absolute;right:12px;bottom:14px;display:flex;flex-direction:column;gap:6px;
+    pointer-events:auto;align-items:flex-end}
+  button{font:inherit;font-size:13px;padding:7px 13px;background:#132030;color:#dbe8f3;
+    border:1px solid var(--edge);border-radius:3px;cursor:pointer}
+  button:hover{background:#1b2f45;border-color:#2f4a63}
+  button:disabled{opacity:.4;cursor:default}
+  button:focus-visible{outline:2px solid var(--pick);outline-offset:1px}
+
+  /* ---- layer readout ---- */
+  #layer{position:absolute;right:12px;top:12px;padding:8px 12px;text-align:right;min-width:200px}
+  #laynm{font-size:15px}
+  #layluck{font-size:11.5px;color:#8ea3b6;margin-top:2px}
+
+  /* ---- find banner ---- */
+  #banner{position:absolute;left:50%;top:16%;transform:translateX(-50%);text-align:center;
+    padding:14px 34px;opacity:0;transition:opacity .25s}
+  #bnrare{font-size:12px;color:#8ea3b6;letter-spacing:.1em}
+  #bnname{font-size:32px;margin:2px 0 0}
+  #bnsub{font-size:12px;color:#7e93a6;margin-top:4px}
+
+  /* ---- modal ---- */
+  #modal{position:absolute;inset:0;display:none;place-items:center;background:rgba(3,5,8,.72);
+    pointer-events:auto}
+  #modalbox{width:min(560px,92vw);max-height:78vh;display:flex;flex-direction:column}
+  #modalbody{overflow-y:auto;padding:10px}
+  .item{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 10px;
+    border:1px solid #16222e;border-radius:3px;margin-bottom:6px;background:#0a1119}
+  .item.on{border-color:#2d6b7d;background:#0d1a22}
+  .item .nm{font-size:15px}
+  .item .ds{font-size:11.5px;color:#7e93a6;margin-top:2px}
+  #modalclose{margin:8px 10px 10px auto}
+
+  /* ---- start card ---- */
+  #start{position:absolute;inset:0;display:grid;place-items:center;background:rgba(3,5,8,.88);
+    pointer-events:auto;text-align:center}
+  #start h1{font-size:46px;margin:0;letter-spacing:.2em;color:#dff4ff}
+  #start p{color:#93a8ba;font-size:13.5px;line-height:1.8;margin:14px 0 0}
+  kbd{background:#132030;border:1px solid var(--edge);border-radius:3px;padding:1px 6px;font:inherit;font-size:12px}
+  .shim{background:linear-gradient(90deg,#fff,#ffd36e,#ff7ad9,#7affea,#fff);
+    background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
+    animation:shim 2.4s linear infinite}
+  @keyframes shim{to{background-position:300% 0}}
+  @media (prefers-reduced-motion:reduce){.shim{animation:none;color:#ffe9a8;-webkit-text-fill-color:#ffe9a8}}
+</style>
+</head>
+<body>
+<div id="hud">
+  <div id="totals" class="panel">
+    <div id="minedlbl">Blocks mined</div>
+    <div id="mined">0</div>
+    <div id="depth">Depth 0 m</div>
+    <div id="coins">0 shards</div>
+  </div>
+
+  <div id="inv" class="panel">
+    <h3>Inventory</h3>
+    <input id="invsearch" placeholder="Search ores">
+    <div id="invlist"><div class="empty">Nothing yet. Look at the rock and hold the left mouse button.</div></div>
+  </div>
+
+  <div id="layer" class="panel">
+    <div id="laynm">Topsoil</div>
+    <div id="layluck">Luck ×1</div>
+  </div>
+
+  <div id="target" class="panel">
+    <div id="trarity">1 in 1</div>
+    <div id="trname">Stone</div>
+    <div id="bar"><div id="barfill"></div></div>
+  </div>
+
+  <div id="cross"></div>
+
+  <div id="banner" class="panel">
+    <div id="bnrare">1 in 1</div>
+    <div id="bnname">Ore</div>
+    <div id="bnsub">new to your inventory</div>
+  </div>
+
+  <div id="side">
+    <button id="btnsell">Sell ores</button>
+    <button id="btnshop">Pickaxes</button>
+    <button id="btntp">Teleports</button>
+  </div>
+
+  <div id="modal">
+    <div id="modalbox" class="panel">
+      <h3 id="modaltitle">Pickaxes</h3>
+      <div id="modalbody"></div>
+      <button id="modalclose">Close</button>
+    </div>
+  </div>
+
+  <div id="start">
+    <div>
+      <h1>DEEPVEIN</h1>
+      <p>
+        Hold <kbd>left mouse</kbd> to mine &nbsp;·&nbsp; <kbd>WASD</kbd> move &nbsp;·&nbsp; <kbd>space</kbd> jump &nbsp;·&nbsp; <kbd>shift</kbd> sprint<br>
+        Every block is rolled on its own. The deeper you dig, the better the odds.<br>
+        <kbd>Esc</kbd> frees the mouse.
+      </p>
+      <p><button id="btnstart" style="pointer-events:auto;font-size:16px;padding:11px 30px;margin-top:10px">Enter the mine</button></p>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+"use strict";
+
+/* ============================================================
+   hashing — deterministic per-voxel randomness
+   ============================================================ */
+function hash3(x, y, z, s) {
+  let h = (x | 0) * 374761393 + (y | 0) * 668265263 + (z | 0) * 2147483647 + (s | 0) * 1274126177;
+  h = (h ^ (h >>> 13)) >>> 0;
+  h = Math.imul(h, 1274126177) >>> 0;
+  h = (h ^ (h >>> 16)) >>> 0;
+  return h;
+}
+function rand01(x, y, z, s) { return hash3(x, y, z, s) / 4294967296; }
+function seeded(seed) {
+  let a = (seed >>> 0) || 1;
+  return function () {
+    a ^= a << 13; a >>>= 0; a ^= a >>> 17; a ^= a << 5; a >>>= 0;
+    return a / 4294967296;
+  };
+}
+
+/* ============================================================
+   ores — tiers, procedural variants, colours
+   ============================================================ */
+const TIERS = [
+  { one: 1,          hue: 210, sat: .06, lit: .46, base: ["Stone", "Gravel", "Shale", "Chalkrock"] },
+  { one: 4,          hue: 24,  sat: .10, lit: .28, base: ["Coal", "Anthracite", "Sootstone", "Cinderclot"] },
+  { one: 14,         hue: 20,  sat: .55, lit: .46, base: ["Copper", "Bronzevein", "Rustband", "Verdigris"] },
+  { one: 45,         hue: 200, sat: .12, lit: .62, base: ["Iron", "Palesteel", "Grimalloy", "Coldiron"] },
+  { one: 160,        hue: 190, sat: .22, lit: .74, base: ["Silver", "Moonmetal", "Quickpearl", "Frostsilver"] },
+  { one: 700,        hue: 46,  sat: .82, lit: .55, base: ["Gold", "Sunbullion", "Kingsgleam", "Amberore"] },
+  { one: 3200,       hue: 138, sat: .72, lit: .46, base: ["Emerald", "Verdantite", "Mossheart", "Greenfire"] },
+  { one: 15000,      hue: 352, sat: .78, lit: .48, base: ["Ruby", "Heartstone", "Bloodquartz", "Emberkin"] },
+  { one: 80000,      hue: 224, sat: .78, lit: .52, base: ["Sapphire", "Deepglass", "Tidecrystal", "Nightazure"] },
+  { one: 400000,     hue: 178, sat: .70, lit: .70, base: ["Diamond", "Brightlattice", "Starcut", "Glacierheart"] },
+  { one: 2200000,    hue: 282, sat: .72, lit: .55, base: ["Amethyst Core", "Duskprism", "Violet Rot", "Hexcrystal"] },
+  { one: 14000000,   hue: 312, sat: .85, lit: .58, base: ["Voidpearl", "Nullvein", "Hollow Bloom", "Unlight"] },
+  { one: 90000000,   hue: 96,  sat: .95, lit: .62, base: ["Celestine", "Godsplinter", "Halogem", "Choirstone"] },
+  { one: 600000000,  hue: 18,  sat: 1,   lit: .66, base: ["Singularity", "Eventglass", "Last Ember", "Collapse"] },
+  { one: 5000000000, hue: 0,   sat: 0,   lit: 1,   base: ["ERROR", "??????", "The Seam", "Nothing At All"] }
+];
+const PREFIX = ["Glimmering", "Cracked", "Dense", "Pale", "Burning", "Frozen", "Hollow", "Twisted",
+  "Ancient", "Molten", "Prismatic", "Static", "Weeping", "Radiant", "Bitter", "Salted", "Whispering",
+  "Drowned", "Feral", "Patient", "Sunken", "Wandering", "Quiet", "Rotting"];
+const VARIANTS = 7;
+const oreCache = new Map();
+
+function makeOre(tierIdx, vIdx) {
+  const key = tierIdx + ":" + vIdx;
+  let o = oreCache.get(key);
+  if (o) return o;
+  const t = TIERS[tierIdx];
+  const rng = seeded(hash3(tierIdx * 91, vIdx * 7717, 13, 3));
+  const base = t.base[Math.floor(rng() * t.base.length)];
+  const name = (vIdx === 0) ? base : PREFIX[Math.floor(rng() * PREFIX.length)] + " " + base;
+  const hue = (t.hue + (rng() - .5) * (tierIdx < 2 ? 10 : 46) + 360) % 360;
+  const sat = Math.min(1, Math.max(0, t.sat + (rng() - .5) * .12));
+  const lit = Math.min(.92, Math.max(.12, t.lit + (rng() - .5) * .12));
+  const col = new THREE.Color().setHSL(hue / 360, sat, lit);
+  o = {
+    key, tier: tierIdx, name, one: t.one, color: col,
+    css: "#" + col.getHexString(),
+    hard: 0.35 + tierIdx * tierIdx * 0.06 + tierIdx * 0.22,
+    value: Math.round(1 + Math.pow(t.one, 0.62)),
+    glow: tierIdx >= 8
+  };
+  oreCache.set(key, o);
+  return o;
+}
+
+/* ---- depth layers ---- */
+const LAYERS = [
+  { at: 0,    name: "Topsoil",        luck: 1,    tint: 0x6b7078 },
+  { at: 24,   name: "Stonebed",       luck: 2.2,  tint: 0x5c636c },
+  { at: 70,   name: "Deepslate",      luck: 5,    tint: 0x3b434d },
+  { at: 160,  name: "Crystal Hollow", luck: 12,   tint: 0x38505e },
+  { at: 340,  name: "Magma Shelf",    luck: 34,   tint: 0x60302c },
+  { at: 700,  name: "The Quiet",      luck: 95,   tint: 0x2b2b3d },
+  { at: 1400, name: "Voidline",       luck: 300,  tint: 0x2a1c38 },
+  { at: 2800, name: "Astral Reach",   luck: 1100, tint: 0x143040 },
+  { at: 6000, name: "Beyond Record",  luck: 4200, tint: 0x0d1a1a }
+];
+function layerFor(depth) {
+  let l = LAYERS[0];
+  for (const x of LAYERS) if (depth >= x.at) l = x;
+  return l;
+}
+
+function oreAt(x, y, z) {
+  const depth = -y;
+  const luck = layerFor(depth).luck;
+  const r = rand01(x, y, z, 101);
+  for (let i = TIERS.length - 1; i >= 1; i--) {
+    if (r < (luck / TIERS[i].one)) {
+      return makeOre(i, hash3(x, y, z, 55) % VARIANTS);
+    }
+  }
+  return makeOre(0, hash3(x, y, z, 55) % VARIANTS);
+}
+
+/* ============================================================
+   world
+   ============================================================ */
+const CH = 16;
+const broken = new Set();
+const bkey = (x, y, z) => x + "," + y + "," + z;
+
+function blockAt(x, y, z) {
+  if (y >= 0) return null;
+  if (broken.has(bkey(x, y, z))) return null;
+  return oreAt(x, y, z);
+}
+const solidAt = (x, y, z) => blockAt(x, y, z) !== null;
+
+/* ============================================================
+   three.js setup
+   ============================================================ */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x05070a);
+scene.fog = new THREE.FogExp2(0x05070a, 0.035);
+
+const camera = new THREE.PerspectiveCamera(76, innerWidth / innerHeight, 0.05, 260);
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.6));
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* selection box */
+const selBox = new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(1.005, 1.005, 1.005)),
+  new THREE.LineBasicMaterial({ color: 0x5fe6ff, transparent: true, opacity: .95, fog: false })
+);
+selBox.visible = false;
+scene.add(selBox);
+
+/* sky plate above the mine so the surface reads as outdoors */
+const sky = new THREE.Mesh(
+  new THREE.PlaneGeometry(600, 600),
+  new THREE.MeshBasicMaterial({ color: 0x121b26, fog: false, side: THREE.DoubleSide })
+);
+sky.rotation.x = Math.PI / 2; sky.position.y = 70;
+scene.add(sky);
+
+/* ============================================================
+   chunk meshing
+   ============================================================ */
+const chunks = new Map();
+const ckey = (cx, cy, cz) => cx + "," + cy + "," + cz;
+const SHADE = [0.66, 0.66, 1.0, 0.44, 0.82, 0.82]; // +x -x +y -y +z -z
+const FACES = [
+  { n: [1, 0, 0], v: [[1,0,0],[1,1,0],[1,1,1],[1,0,1]] },
+  { n: [-1,0, 0], v: [[0,0,1],[0,1,1],[0,1,0],[0,0,0]] },
+  { n: [0, 1, 0], v: [[0,1,0],[0,1,1],[1,1,1],[1,1,0]] },
+  { n: [0,-1, 0], v: [[0,0,1],[0,0,0],[1,0,0],[1,0,1]] },
+  { n: [0, 0, 1], v: [[1,0,1],[1,1,1],[0,1,1],[0,0,1]] },
+  { n: [0, 0,-1], v: [[0,0,0],[0,1,0],[1,1,0],[1,0,0]] }
+];
+
+function buildChunk(cx, cy, cz) {
+  const pos = [], col = [], idx = [];
+  const gpos = [], gcol = [], gidx = [];
+  const ox = cx * CH, oy = cy * CH, oz = cz * CH;
+  let any = false;
+
+  for (let lx = 0; lx < CH; lx++)
+  for (let ly = 0; ly < CH; ly++)
+  for (let lz = 0; lz < CH; lz++) {
+    const x = ox + lx, y = oy + ly, z = oz + lz;
+    const ore = blockAt(x, y, z);
+    if (!ore) continue;
+    const tint = layerFor(-y).tint;
+    for (let f = 0; f < 6; f++) {
+      const n = FACES[f].n;
+      if (solidAt(x + n[0], y + n[1], z + n[2])) continue;
+      any = true;
+      const sh = SHADE[f];
+      const c = ore.color;
+      let r = c.r * sh, g = c.g * sh, b = c.b * sh;
+      if (ore.tier === 0) { // plain stone picks up the layer's tint
+        const t = new THREE.Color(tint);
+        r = (r * .35 + t.r * .75) * sh; g = (g * .35 + t.g * .75) * sh; b = (b * .35 + t.b * .75) * sh;
+      }
+      if (ore.glow) { r = Math.min(1, r * 1.6 + .18); g = Math.min(1, g * 1.6 + .18); b = Math.min(1, b * 1.6 + .18); }
+      const start = pos.length / 3;
+      for (const v of FACES[f].v) {
+        pos.push(x + v[0], y + v[1], z + v[2]);
+        col.push(r, g, b);
+      }
+      idx.push(start, start + 1, start + 2, start, start + 2, start + 3);
+
+      if (ore.glow) { // additive halo shell for the good stuff
+        const gs = gpos.length / 3;
+        for (const v of FACES[f].v) {
+          gpos.push(x + .5 + (v[0] - .5) * 1.12, y + .5 + (v[1] - .5) * 1.12, z + .5 + (v[2] - .5) * 1.12);
+          gcol.push(c.r * .5, c.g * .5, c.b * .5);
+        }
+        gidx.push(gs, gs + 1, gs + 2, gs, gs + 2, gs + 3);
+      }
+    }
+  }
+  if (!any) return null;
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  geo.setIndex(idx);
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true }));
+  mesh.frustumCulled = true;
+  const group = { mesh, glow: null };
+  scene.add(mesh);
+
+  if (gpos.length) {
+    const gg = new THREE.BufferGeometry();
+    gg.setAttribute("position", new THREE.Float32BufferAttribute(gpos, 3));
+    gg.setAttribute("color", new THREE.Float32BufferAttribute(gcol, 3));
+    gg.setIndex(gidx);
+    const gm = new THREE.Mesh(gg, new THREE.MeshBasicMaterial({
+      vertexColors: true, transparent: true, opacity: .5,
+      blending: THREE.AdditiveBlending, depthWrite: false, fog: false
+    }));
+    group.glow = gm;
+    scene.add(gm);
+  }
+  return group;
+}
+
+function disposeChunk(g) {
+  scene.remove(g.mesh); g.mesh.geometry.dispose(); g.mesh.material.dispose();
+  if (g.glow) { scene.remove(g.glow); g.glow.geometry.dispose(); g.glow.material.dispose(); }
+}
+function dropChunk(cx, cy, cz) {
+  const k = ckey(cx, cy, cz), g = chunks.get(k);
+  if (g) { if (g !== "empty") disposeChunk(g); chunks.delete(k); }
+}
+const RD = 3, RDY = 2;
+function updateChunks() {
+  const pcx = Math.floor(player.pos.x / CH), pcy = Math.floor(player.pos.y / CH), pcz = Math.floor(player.pos.z / CH);
+  let budget = 3;
+  for (let dx = -RD; dx <= RD && budget > 0; dx++)
+  for (let dy = -RDY; dy <= RDY && budget > 0; dy++)
+  for (let dz = -RD; dz <= RD && budget > 0; dz++) {
+    const cx = pcx + dx, cy = pcy + dy, cz = pcz + dz;
+    if (cy * CH >= 0) continue;
+    const k = ckey(cx, cy, cz);
+    if (chunks.has(k)) continue;
+    const g = buildChunk(cx, cy, cz);
+    chunks.set(k, g || "empty");
+    budget--;
+  }
+  for (const k of [...chunks.keys()]) {
+    const p = k.split(",");
+    if (Math.abs(+p[0] - pcx) > RD + 1 || Math.abs(+p[1] - pcy) > RDY + 1 || Math.abs(+p[2] - pcz) > RD + 1) {
+      const g = chunks.get(k);
+      if (g !== "empty") disposeChunk(g);
+      chunks.delete(k);
+    }
+  }
+}
+function dirty(x, y, z) {
+  for (let dx = -1; dx <= 1; dx++)
+  for (let dy = -1; dy <= 1; dy++)
+  for (let dz = -1; dz <= 1; dz++) {
+    dropChunk(Math.floor((x + dx) / CH), Math.floor((y + dy) / CH), Math.floor((z + dz) / CH));
+  }
+}
+
+/* ============================================================
+   player
+   ============================================================ */
+const player = {
+  pos: new THREE.Vector3(0.5, 2.0, 0.5),
+  vel: new THREE.Vector3(),
+  yaw: 0, pitch: 0, onGround: false,
+  W: 0.32, H: 1.72, EYE: 1.56
+};
+const keys = Object.create(null);
+addEventListener("keydown", e => {
+  keys[e.code] = true;
+  if (e.code === "Space") e.preventDefault();
+  if (e.code === "KeyE") toggleModal("shop");
+});
+addEventListener("keyup", e => { keys[e.code] = false; });
+
+renderer.domElement.addEventListener("mousedown", e => { if (e.button === 0) mining = true; });
+addEventListener("mouseup", e => { if (e.button === 0) { mining = false; progress = 0; } });
+addEventListener("mousemove", e => {
+  if (document.pointerLockElement !== renderer.domElement) return;
+  player.yaw -= e.movementX * 0.0022;
+  player.pitch -= e.movementY * 0.0022;
+  player.pitch = Math.max(-1.55, Math.min(1.55, player.pitch));
+});
+
+document.addEventListener("pointerlockchange", () => {
+  if (document.pointerLockElement !== renderer.domElement) {
+    mining = false; progress = 0;
+    for (const k in keys) keys[k] = false;
+  }
+});
+addEventListener("blur", () => { mining = false; for (const k in keys) keys[k] = false; });
+
+function boxFree(px, py, pz) {
+  const w = player.W;
+  const x0 = Math.floor(px - w), x1 = Math.floor(px + w);
+  const y0 = Math.floor(py), y1 = Math.floor(py + player.H);
+  const z0 = Math.floor(pz - w), z1 = Math.floor(pz + w);
+  for (let x = x0; x <= x1; x++)
+  for (let y = y0; y <= y1; y++)
+  for (let z = z0; z <= z1; z++) if (solidAt(x, y, z)) return false;
+  return true;
+}
+
+function physics(dt) {
+  const sp = (keys.ShiftLeft || keys.ShiftRight ? 8.2 : 4.9);
+  let fx = 0, fz = 0;
+  if (keys.KeyW) fz -= 1; if (keys.KeyS) fz += 1;
+  if (keys.KeyA) fx -= 1; if (keys.KeyD) fx += 1;
+  const len = Math.hypot(fx, fz) || 1;
+  fx /= len; fz /= len;
+  const sin = Math.sin(player.yaw), cos = Math.cos(player.yaw);
+  const wx = fx * cos + fz * sin, wz = -fx * sin + fz * cos;
+
+  const acc = player.onGround ? 46 : 12;
+  player.vel.x += (wx * sp - player.vel.x) * Math.min(1, acc * dt);
+  player.vel.z += (wz * sp - player.vel.z) * Math.min(1, acc * dt);
+  player.vel.y -= 26 * dt;
+  if (player.vel.y < -48) player.vel.y = -48;
+  if (keys.Space && player.onGround) { player.vel.y = 8.6; player.onGround = false; }
+
+  const p = player.pos;
+  let nx = p.x + player.vel.x * dt;
+  if (boxFree(nx, p.y, p.z)) p.x = nx; else player.vel.x = 0;
+  let nz = p.z + player.vel.z * dt;
+  if (boxFree(p.x, p.y, nz)) p.z = nz; else player.vel.z = 0;
+  let ny = p.y + player.vel.y * dt;
+  if (boxFree(p.x, ny, p.z)) { p.y = ny; player.onGround = false; }
+  else {
+    if (player.vel.y < 0) { p.y = Math.floor(ny) + 1; player.onGround = true; }
+    player.vel.y = 0;
+  }
+  if (p.y < -100000) p.y = 2;
+}
+
+/* ============================================================
+   voxel raycast (Amanatides & Woo)
+   ============================================================ */
+function rayPick(reach) {
+  const dir = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(player.pitch, player.yaw, 0, "YXZ"));
+  const ox = player.pos.x, oy = player.pos.y + player.EYE, oz = player.pos.z;
+  let x = Math.floor(ox), y = Math.floor(oy), z = Math.floor(oz);
+  const sx = dir.x > 0 ? 1 : -1, sy = dir.y > 0 ? 1 : -1, sz = dir.z > 0 ? 1 : -1;
+  const dX = Math.abs(1 / (dir.x || 1e-9)), dY = Math.abs(1 / (dir.y || 1e-9)), dZ = Math.abs(1 / (dir.z || 1e-9));
+  let tX = ((dir.x > 0 ? x + 1 - ox : ox - x)) * dX;
+  let tY = ((dir.y > 0 ? y + 1 - oy : oy - y)) * dY;
+  let tZ = ((dir.z > 0 ? z + 1 - oz : oz - z)) * dZ;
+  let t = 0;
+  for (let i = 0; i < 96; i++) {
+    const b = blockAt(x, y, z);
+    if (b) return { x, y, z, ore: b };
+    if (tX < tY && tX < tZ) { x += sx; t = tX; tX += dX; }
+    else if (tY < tZ) { y += sy; t = tY; tY += dY; }
+    else { z += sz; t = tZ; tZ += dZ; }
+    if (t > reach) break;
+  }
+  return null;
+}
+
+/* ============================================================
+   gear
+   ============================================================ */
+const PICKS = [
+  { name: "Bent Shovelhead", desc: "Came with the job.",            power: 1,    fortune: 1,  cost: 0 },
+  { name: "Iron Pick",       desc: "Twice the bite.",               power: 2.4,  fortune: 1,  cost: 260 },
+  { name: "Drillhand",       desc: "Chews through deepslate.",      power: 6,    fortune: 1.4, cost: 3200 },
+  { name: "Thermal Lance",   desc: "Melts more than it breaks.",    power: 17,   fortune: 2,  cost: 42000 },
+  { name: "Resonator",       desc: "Rock forgets it was solid.",    power: 55,   fortune: 3,  cost: 700000 },
+  { name: "Gravity Auger",   desc: "Pulls the ore out whole.",      power: 190,  fortune: 5,  cost: 9000000 },
+  { name: "Seamsplitter",    desc: "Ends arguments with bedrock.",  power: 850,  fortune: 9,  cost: 180000000 }
+];
+const state = {
+  mined: 0, coins: 0, pick: 0, best: 0, maxDepth: 0,
+  inv: new Map(), owned: new Set([0])
+};
+
+/* ============================================================
+   mining
+   ============================================================ */
+let mining = false, progress = 0, targetKey = null;
+
+function fmt(n) {
+  if (n < 1000) return String(Math.floor(n));
+  if (n < 1e6) return (n / 1e3).toFixed(n < 1e5 ? 1 : 0) + "K";
+  if (n < 1e9) return (n / 1e6).toFixed(2) + "M";
+  if (n < 1e12) return (n / 1e9).toFixed(2) + "B";
+  return (n / 1e12).toFixed(2) + "T";
+}
+function rarityText(one) { return "1 in " + (one < 1000 ? one : fmt(one)); }
+
+function breakBlock(hit) {
+  const ore = hit.ore;
+  broken.add(bkey(hit.x, hit.y, hit.z));
+  dirty(hit.x, hit.y, hit.z);
+  state.mined++;
+  const pk = PICKS[state.pick];
+  const got = Math.max(1, Math.round(pk.fortune));
+  const e = state.inv.get(ore.key);
+  const isNew = !e;
+  if (e) e.n += got; else state.inv.set(ore.key, { ore, n: got });
+  if (ore.tier > state.best) state.best = ore.tier;
+  burst(hit.x + .5, hit.y + .5, hit.z + .5, ore.color);
+  blip(ore.tier);
+  if (ore.tier >= 7 || (isNew && ore.tier >= 5)) showBanner(ore, isNew);
+  renderInv();
+  updateTotals();
+}
+
+function tickMine(dt) {
+  const hit = rayPick(5.2);
+  if (!hit) {
+    selBox.visible = false; targetPanel.style.opacity = 0; targetKey = null; progress = 0; return;
+  }
+  selBox.visible = true;
+  selBox.position.set(hit.x + .5, hit.y + .5, hit.z + .5);
+  const k = bkey(hit.x, hit.y, hit.z);
+  if (k !== targetKey) { targetKey = k; progress = 0; showTarget(hit.ore); }
+  if (mining && document.pointerLockElement === renderer.domElement) {
+    progress += (PICKS[state.pick].power * dt) / hit.ore.hard;
+    if (progress >= 1) { progress = 0; breakBlock(hit); targetKey = null; }
+  } else progress = 0;
+  barFill.style.width = Math.min(100, progress * 100) + "%";
+}
+
+/* ============================================================
+   particles
+   ============================================================ */
+const parts = [];
+const partGeo = new THREE.BoxGeometry(.13, .13, .13);
+for (let i = 0; i < 70; i++) {
+  const m = new THREE.Mesh(partGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  m.visible = false; scene.add(m);
+  parts.push({ m, v: new THREE.Vector3(), life: 0 });
+}
+let partI = 0;
+function burst(x, y, z, color) {
+  for (let i = 0; i < 9; i++) {
+    const p = parts[partI = (partI + 1) % parts.length];
+    p.m.position.set(x, y, z); p.m.material.color.copy(color); p.m.visible = true;
+    p.v.set((Math.random() - .5) * 4.4, Math.random() * 4.2, (Math.random() - .5) * 4.4);
+    p.life = .6 + Math.random() * .3;
+  }
+}
+function tickParts(dt) {
+  for (const p of parts) {
+    if (p.life <= 0) continue;
+    p.life -= dt;
+    p.v.y -= 15 * dt;
+    p.m.position.addScaledVector(p.v, dt);
+    p.m.rotation.x += dt * 6; p.m.rotation.y += dt * 4;
+    if (p.life <= 0) p.m.visible = false;
+  }
+}
+
+/* ============================================================
+   sound
+   ============================================================ */
+let actx = null;
+function blip(tier) {
+  try {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    const t = actx.currentTime;
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = tier >= 7 ? "triangle" : "square";
+    o.frequency.setValueAtTime(120 + tier * 46 + Math.random() * 30, t);
+    o.frequency.exponentialRampToValueAtTime(70 + tier * 20, t + .12);
+    g.gain.setValueAtTime(tier >= 7 ? .16 : .06, t);
+    g.gain.exponentialRampToValueAtTime(.0008, t + (tier >= 7 ? .5 : .13));
+    o.connect(g); g.connect(actx.destination);
+    o.start(t); o.stop(t + .55);
+  } catch (e) {}
+}
+
+/* ============================================================
+   HUD
+   ============================================================ */
+const elMined = document.getElementById("mined"), elDepth = document.getElementById("depth"),
+      elCoins = document.getElementById("coins"), elLayNm = document.getElementById("laynm"),
+      elLayLuck = document.getElementById("layluck"), invList = document.getElementById("invlist"),
+      targetPanel = document.getElementById("target"), trName = document.getElementById("trname"),
+      trRarity = document.getElementById("trarity"), barFill = document.getElementById("barfill"),
+      banner = document.getElementById("banner"), invSearch = document.getElementById("invsearch");
+
+function updateTotals() {
+  elMined.textContent = state.mined.toLocaleString();
+  const d = Math.max(0, Math.floor(-player.pos.y));
+  if (d > state.maxDepth) state.maxDepth = d;
+  elDepth.textContent = "Depth " + d.toLocaleString() + " m";
+  elCoins.textContent = fmt(state.coins) + " shards";
+  const l = layerFor(d);
+  elLayNm.textContent = l.name;
+  elLayLuck.textContent = "Luck ×" + fmt(l.luck);
+}
+function showTarget(ore) {
+  targetPanel.style.opacity = 1;
+  trName.textContent = ore.name;
+  trName.className = ore.tier >= 11 ? "shim" : "";
+  trName.style.color = ore.tier >= 11 ? "" : ore.css;
+  trRarity.textContent = rarityText(ore.one);
+}
+let bannerT = 0;
+function showBanner(ore, isNew) {
+  banner.style.opacity = 1;
+  const bn = document.getElementById("bnname");
+  bn.textContent = ore.name;
+  bn.className = ore.tier >= 11 ? "shim" : "";
+  bn.style.color = ore.tier >= 11 ? "" : ore.css;
+  document.getElementById("bnrare").textContent = rarityText(ore.one);
+  document.getElementById("bnsub").textContent = isNew ? "new to your inventory" : "worth " + fmt(ore.value) + " shards";
+  bannerT = 3.4;
+}
+function renderInv() {
+  const q = invSearch.value.trim().toLowerCase();
+  const items = [...state.inv.values()]
+    .filter(e => !q || e.ore.name.toLowerCase().includes(q))
+    .sort((a, b) => b.ore.one - a.ore.one);
+  if (!items.length) {
+    invList.innerHTML = '<div class="empty">' +
+      (q ? "No ore by that name yet." : "Nothing yet. Look at the rock and hold the left mouse button.") + "</div>";
+    return;
+  }
+  invList.innerHTML = items.map(e =>
+    '<div class="row"><span class="' + (e.ore.tier >= 11 ? "shim" : "") + '" style="' +
+    (e.ore.tier >= 11 ? "" : "color:" + e.ore.css) + '">' +
+    esc(e.ore.name) + '</span><span class="ct">' + fmt(e.n) + "</span></div>"
+  ).join("");
+}
+function esc(s) { return s.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+invSearch.addEventListener("input", renderInv);
+invSearch.addEventListener("keydown", e => e.stopPropagation());
+
+/* ---- sell ---- */
+document.getElementById("btnsell").onclick = () => {
+  let sum = 0;
+  for (const e of state.inv.values()) { sum += e.ore.value * e.n; e.n = 0; }
+  state.inv.clear();
+  state.coins += sum;
+  renderInv(); updateTotals();
+  if (modalOpen === "shop") openShop();
+};
+
+/* ---- modals ---- */
+const modal = document.getElementById("modal"), modalBody = document.getElementById("modalbody"),
+      modalTitle = document.getElementById("modaltitle");
+let modalOpen = null;
+function closeModal() { modal.style.display = "none"; modalOpen = null; }
+document.getElementById("modalclose").onclick = closeModal;
+function toggleModal(which) { (modalOpen === which) ? closeModal() : (which === "shop" ? openShop() : openTp()); }
+
+function openShop() {
+  modalOpen = "shop"; modal.style.display = "grid"; modalTitle.textContent = "Pickaxes";
+  modalBody.innerHTML = PICKS.map((p, i) => {
+    const owned = state.owned.has(i), eq = state.pick === i;
+    const afford = state.coins >= p.cost;
+    return '<div class="item' + (eq ? " on" : "") + '"><div><div class="nm">' + esc(p.name) + '</div>' +
+      '<div class="ds">' + esc(p.desc) + " · speed ×" + p.power + " · fortune ×" + p.fortune + '</div></div>' +
+      '<button data-i="' + i + '"' + ((!owned && !afford) || eq ? " disabled" : "") + ">" +
+      (eq ? "Equipped" : owned ? "Equip" : fmt(p.cost) + " shards") + "</button></div>";
+  }).join("");
+  modalBody.querySelectorAll("button").forEach(b => b.onclick = () => {
+    const i = +b.dataset.i;
+    if (!state.owned.has(i)) {
+      if (state.coins < PICKS[i].cost) return;
+      state.coins -= PICKS[i].cost; state.owned.add(i);
+    }
+    state.pick = i; updateTotals(); openShop();
+  });
+}
+function openTp() {
+  modalOpen = "tp"; modal.style.display = "grid"; modalTitle.textContent = "Teleports";
+  modalBody.innerHTML = LAYERS.map((l, i) => {
+    const ok = state.maxDepth >= l.at;
+    return '<div class="item"><div><div class="nm">' + esc(l.name) + '</div><div class="ds">' +
+      l.at + " m · luck ×" + fmt(l.luck) + (ok ? "" : " · reach " + l.at + " m to unlock") + '</div></div>' +
+      '<button data-i="' + i + '"' + (ok ? "" : " disabled") + ">" + (ok ? "Travel" : "Locked") + "</button></div>";
+  }).join("");
+  modalBody.querySelectorAll("button").forEach(b => b.onclick = () => {
+    const l = LAYERS[+b.dataset.i];
+    const y = -Math.max(2, l.at) - 1;
+    const px = Math.floor(player.pos.x), pz = Math.floor(player.pos.z);
+    for (let dx = -1; dx <= 1; dx++)
+    for (let dy = 0; dy <= 2; dy++)
+    for (let dz = -1; dz <= 1; dz++) {
+      broken.add(bkey(px + dx, y + dy, pz + dz));
+      dirty(px + dx, y + dy, pz + dz);
+    }
+    player.pos.set(px + .5, y, pz + .5);
+    player.vel.set(0, 0, 0);
+    closeModal(); updateTotals();
+  });
+}
+document.getElementById("btnshop").onclick = () => toggleModal("shop");
+document.getElementById("btntp").onclick = () => toggleModal("tp");
+addEventListener("keydown", e => { if (e.code === "Escape") closeModal(); });
+
+/* ---- start ---- */
+const startCard = document.getElementById("start");
+document.getElementById("btnstart").onclick = () => {
+  startCard.style.display = "none";
+  renderer.domElement.requestPointerLock();
+};
+renderer.domElement.addEventListener("click", () => {
+  if (!modalOpen && document.pointerLockElement !== renderer.domElement) renderer.domElement.requestPointerLock();
+});
+
+/* ============================================================
+   loop
+   ============================================================ */
+let last = performance.now();
+function frame(now) {
+  requestAnimationFrame(frame);
+  let dt = Math.min(.05, (now - last) / 1000);
+  last = now;
+
+  if (startCard.style.display !== "none") { renderer.render(scene, camera); return; }
+
+  physics(dt);
+  updateChunks();
+  tickMine(dt);
+  tickParts(dt);
+
+  if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) banner.style.opacity = 0; }
+
+  const depth = Math.max(0, -player.pos.y);
+  const density = 0.012 + Math.min(.06, depth * 0.00012);
+  scene.fog.density = depth < 3 ? 0.006 : density;
+  const tint = layerFor(depth).tint;
+  scene.background.setHex(tint).multiplyScalar(0.12);
+  scene.fog.color.copy(scene.background);
+
+  camera.position.set(player.pos.x, player.pos.y + player.EYE, player.pos.z);
+  camera.rotation.set(player.pitch, player.yaw, 0, "YXZ");
+
+  updateTotals();
+  renderer.render(scene, camera);
+}
+updateTotals();
+renderInv();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
